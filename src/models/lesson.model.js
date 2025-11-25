@@ -4,7 +4,7 @@ const lessonSchema = new mongoose.Schema({
     title: {
         type: String,
         required: true,
-        trim: trim
+        trim: true
     },
     description: String,
     resource: [String],
@@ -14,6 +14,8 @@ const lessonSchema = new mongoose.Schema({
         required: true
     }
 }, { timestamps: true })
+
+lessonSchema.index({ module: 1 });
 
 
 export const Lesson = mongoose.model("Lesson", lessonSchema)

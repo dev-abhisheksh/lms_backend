@@ -13,7 +13,7 @@ const courseEnrollmentSchema = new mongoose.Schema({
     },
     role: {
         type: String,
-        enum: ["student", "user", "manager"],
+        enum: ["student", "teacher", "manager"],
         required: true
     },
     enrolledAt: {

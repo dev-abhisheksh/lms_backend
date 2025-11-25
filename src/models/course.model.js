@@ -33,5 +33,7 @@ const courseSchema = new mongoose.Schema({
     }
 }, { timestamps: true })
 
+courseSchema.index({ courseCode: 1 }, { unique: true });
+courseSchema.index({ createdBy: 1 });
 
 export const Course = mongoose.model("Course", courseSchema)

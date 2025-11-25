@@ -141,9 +141,74 @@ const deleteAssignment = async (req, res) => {
     }
 }
 
+const togglePublishAssignment = async (req, res) => {
+    try {
+        const { assignmentId } = req.params;
+        if (!assignmentId) return res.status(400).json({ message: "Assignment ID is required" })
+
+        const assignment = await Assignment.findById(assignmentId);
+        if (!assignment) return res.status(404).json({ message: "Assignment not found" })
+
+        if (req.user.role !== "admin" && req.user.role !== "manager" &&
+            !(req.user.role === "teacher" && assignment.createdBy.toString() === req.user._id.toString())
+        ) return res.status(403).json({ message: "You're not authorized!" })
+
+
+        if (new Date(assignment.dueDate) < new Date()) {
+            return res.status(400).json({ message: "Cannot publish past due-date assignments" })
+        }
+        assignment.isPublished = !assignment.isPublished;
+        await assignment.save()
+
+        return res.status(200).json({
+            message: `Assignment successfully ${assignment.isPublished ? "published" : "unpublished"}`,
+            assignment: {
+                _id: assignment._id,
+                title: assignment.title,
+                isPublished: assignment.isPublished
+            }
+        })
+    } catch (error) {
+        console.error("Failed to toggle assignment publish status:", error.message);
+        return res.status(500).json({ message: "Failed to toggle assignment publish status" });
+    }
+}
+
+const getAssignmentById = async (req, res) => {
+    try {
+        const { assignmentId } = req.params;
+        if (!assignmentId) return res.status(400).json({ message: "Assignment ID is required" })
+
+        const query = { _id: assignmentId };
+        if (req.user.role === "student") {
+            query.isPublished = true;
+        }
+
+        const assignment = await Assignment.findOne(query)
+            .populate("course", "title description")
+            .populate("createdBy", "fullName username email role")
+            .populate({
+                path: "submissions",
+                populate: { path: "student", select: "fullName email" }
+            }).lean()
+        if (!assignment) return res.status(404).json({ message: "Assignment not found" })
+
+        return res.status(200).json({
+            message: "Assignment fetched successfully",
+            assignment
+        })
+
+    } catch (error) {
+        console.error("Failed to fetch assignment by ID:", error.message);
+        return res.status(500).json({ message: "Failed to fetch assignment by ID" });
+    }
+}
+
 export {
     createAssignment,
     getAssignmentsByCourse,
     updateAssignment,
-    deleteAssignment
+    deleteAssignment,
+    togglePublishAssignment,
+    getAssignmentById
 }

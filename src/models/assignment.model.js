@@ -22,7 +22,7 @@ const assignmentSchema = new mongoose.Schema({
         required: true
     },
     maxMarks: {
-        type: String,   
+        type: String,
         default: 100
     },
     attachments: [{
@@ -37,6 +37,10 @@ const assignmentSchema = new mongoose.Schema({
         default: false
     }
 }, { timestamps: true })
+
+assignmentSchema.index({ course: 1 });
+assignmentSchema.index({ createdBy: 1 });
+assignmentSchema.index({ dueDate: 1 });
 
 
 export const Assignment = mongoose.model("Assignment", assignmentSchema)

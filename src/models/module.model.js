@@ -20,5 +20,6 @@ const moduleSchema = new mongoose.Schema({
     }
 }, { timestamps: true })
 
+moduleSchema.index({ course: 1 });
 
 export const Module = mongoose.model("Module", moduleSchema)
