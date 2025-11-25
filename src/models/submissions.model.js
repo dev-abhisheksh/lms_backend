@@ -13,7 +13,7 @@ const submissionSchema = new mongoose.Schema({
     },
     fileUrl: {
         type: String,
-        required: true
+        default: null
     },
     grade: {
         type: Number,
