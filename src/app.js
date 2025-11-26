@@ -5,6 +5,7 @@ import courseRouter from "./routes/course.route.js"
 import enrollmentRouter from "./routes/courseEnrollment.route.js"
 import assignmentRouter from "./routes/assignment.route.js"
 import submissionRouter from "./routes/submission.route.js"
+import departmentRouter from "./routes/department.route.js"
 
 dotenv.config();
 const app = express();
@@ -16,5 +17,6 @@ app.use("/api/v1/courses", courseRouter)
 app.use("/api/v1/enrollments", enrollmentRouter)
 app.use("/api/v1/assignments", assignmentRouter)
 app.use("/api/v1/submissions", submissionRouter)
+app.use("/api/v1/departments", departmentRouter)
 
 export default app;

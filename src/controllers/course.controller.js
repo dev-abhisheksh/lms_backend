@@ -1,13 +1,15 @@
 import { Course } from "../models/course.model.js";
 import { CourseEnrollment } from "../models/courseEnrollment.model.js";
+import { Department } from "../models/department.model.js";
 import { Module } from "../models/module.model.js";
 import { uploadToCloudinary } from "../utils/cloudinary.js";
 
 //create COURSE
 const createCourse = async (req, res) => {
     try {
+        const { department } = req.params
         const { title, description, courseCode, thumbnail } = req.body;
-        if (!title || !description || !courseCode) return res.status(400).json({ message: "Title, courseCode & description fields are required" })
+        if (!title || !description || !courseCode || !department) return res.status(400).json({ message: "Title, courseCode & description fields are required" })
 
         //role check
         if (req.user.role !== "admin") return res.status(403).json({ message: "Not authorized!" })
@@ -30,17 +32,21 @@ const createCourse = async (req, res) => {
             }
         }
 
+        //checking if the department exists
+        const existingDepartment = await Department.findById(department).select("name code")
+        if (!department) return res.status(404).json({ message: "Department doesnt exists" })
+
         const course = await Course.create({
             title: title.trim(),
             description: description.trim(),
             courseCode: courseCode.trim(),
-            department: department.trim(),
+            department: existingDepartment,
             createdBy: req.user._id,
             thumbnail: thumbnailMeta,
             isPublished: true
         })
 
-        return res.status(201).json({ message: "Course created successfully" })
+        return res.status(201).json({ message: "Course created successfully", course })
     } catch (error) {
         console.error("Failed to create course", error.message)
         return res.status(500).json({ message: "Failed to create course" })

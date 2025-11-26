@@ -1,4 +1,4 @@
-import { Department } from "../models/department.model";
+import { Department } from "../models/department.model.js";
 
 
 const createDepartment = async (req, res) => {
@@ -39,6 +39,19 @@ const createDepartment = async (req, res) => {
     }
 }
 
+const getAllDepartments = async (req, res) => {
+    try {
+        const departments = await Department.find({ isActive: true }).sort({ name: 1 })
+
+        return res.status(200).json({ message: "Fetched all departments", departments })
+
+    } catch (error) {
+        console.error("Failed to fetch departments", error.message)
+        return res.status(500).json({ message: "Failed to fetch departments" })
+    }
+}
+
 export {
-    createDepartment
+    createDepartment,
+    getAllDepartments
 }
