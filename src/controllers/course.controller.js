@@ -7,9 +7,9 @@ import { uploadToCloudinary } from "../utils/cloudinary.js";
 //create COURSE
 const createCourse = async (req, res) => {
     try {
-        const { department } = req.params
+        const { departmentId } = req.params
         const { title, description, courseCode, thumbnail } = req.body;
-        if (!title || !description || !courseCode || !department) return res.status(400).json({ message: "Title, courseCode & description fields are required" })
+        if (!title || !description || !courseCode || !departmentId) return res.status(400).json({ message: "Title, courseCode & description fields are required" })
 
         //role check
         if (req.user.role !== "admin") return res.status(403).json({ message: "Not authorized!" })
@@ -33,14 +33,14 @@ const createCourse = async (req, res) => {
         }
 
         //checking if the department exists
-        const existingDepartment = await Department.findById(department).select("name code")
-        if (!department) return res.status(404).json({ message: "Department doesnt exists" })
+        const existingDepartment = await Department.findById(departmentId).select("name code")
+        if (!departmentId) return res.status(404).json({ message: "Department doesnt exists" })
 
         const course = await Course.create({
             title: title.trim(),
             description: description.trim(),
             courseCode: courseCode.trim(),
-            department: existingDepartment,
+            department: existingDepartment._id,
             createdBy: req.user._id,
             thumbnail: thumbnailMeta,
             isPublished: true
@@ -56,12 +56,12 @@ const createCourse = async (req, res) => {
 //get ALL COURSES
 const getAllCourses = async (req, res) => {
     try {
-        const { departmentId } = req.params;
+        const { departmentId } = req.query;
         const { search, page = 1, limit = 20 } = req.query;
 
         let department = null;
         if (departmentId) {
-            const department = await Department.findById(departmentId)
+            department = await Department.findById(departmentId)
             if (!department) return res.status(404).json({ message: "Department not found" })
 
             if (req.user.role !== "admin" && !department.isActive) {
@@ -104,7 +104,7 @@ const getAllCourses = async (req, res) => {
             .populate("createdBy", "fullName email username")
             .populate("department", "name code isActive")
             .sort({ title: 1 })
-            .skip(slip)
+            .skip(skip)
             .limit(Math.min(100, Number(limit)))
 
         return res.status(200).json({
@@ -121,28 +121,46 @@ const getAllCourses = async (req, res) => {
 const getMyCourse = async (req, res) => {
     try {
         const { departmentId, courseId } = req.query;
-        const filter = { user: req.user._id }
 
-        if (departmentId) filter.department = departmentId;
-        if (courseId) filter.course = courseId;
+        const filter = { user: req.user._id };
+
+        if (courseId) filter.course = courseId;   // VALID
+        // ❌ departmentId should NOT go inside filter because enrollment has no department
+
+        const raw = await CourseEnrollment.find({ user: req.user._id });
+        console.log("RAW ENROLLMENTS:", JSON.stringify(raw, null, 2));
 
         let enrollments = await CourseEnrollment.find(filter)
-            .populate("course", "title courseCode department isPublished")
-            .sort({ createdAt: -1 })
+            .populate({
+                path: "course",
+                select: "title courseCode department isPublished",
+                populate: {
+                    path: "department",
+                    select: "name code isActive"
+                }
+            })
+            .sort({ createdAt: -1 });
 
+        // filter only after populate
         if (req.user.role !== "admin") {
-            enrollments = enrollments.filter(en => en.department?.isActive)
 
-            if (req.user.role === "manager") {
-
+            // filter by department if provided
+            if (departmentId) {
+                enrollments = enrollments.filter(
+                    en => en.course?.department?._id.toString() === departmentId
+                );
             }
 
+            // filter out inactive departments
+            enrollments = enrollments.filter(
+                en => en.course?.department?.isActive === true
+            );
+
+            // students only see published courses
             if (req.user.role === "student") {
-                enrollments = enrollments.filter(en => en.course.isPublished)
-            }
-
-            if (req.user.role === "teacher") {
-
+                enrollments = enrollments.filter(
+                    en => en.course?.isPublished === true
+                );
             }
         }
 
@@ -150,12 +168,14 @@ const getMyCourse = async (req, res) => {
             message: "Fetched your courses successfully",
             count: enrollments.length,
             courses: enrollments
-        })
+        });
+
     } catch (error) {
-        console.error("Failed to fetch your courses:", error.message);
+        console.error("Failed to fetch your courses:", error);
         return res.status(500).json({ message: "Failed to fetch your courses" });
     }
-}
+};
+
 
 const getCourseById = async (req, res) => {
     try {

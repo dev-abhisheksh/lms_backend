@@ -5,8 +5,8 @@ import { createCourse, deleteCourse, getAllCourses, getCourseById, getMyCourse, 
 
 const router = express.Router();
 
-router.post("/create/:department", verifyJWT, authorizeRoles("teacher", "admin"), createCourse)
-router.get("/courses/:departmentId", verifyJWT, getAllCourses);
+router.post("/create/:departmentId", verifyJWT, authorizeRoles("teacher", "admin"), createCourse)
+router.get("/courses", verifyJWT, getAllCourses);
 router.get("/my-courses", verifyJWT, getMyCourse)
 router.get("/course/:id", verifyJWT, getCourseById)
 router.patch("/update/:id", verifyJWT, authorizeRoles("admin", "teacher"), updateCourse)
