@@ -170,26 +170,71 @@ const getMyCourse = async (req, res) => {
 
 const getCourseById = async (req, res) => {
     try {
-        const { id } = req.params;
+        const { courseId } = req.params;
+        if (!courseId) return res.status(400).json({ message: "CourseID is required" })
 
-        const course = await Course.findById(id)
+        const course = await Course.findById(courseId)
+            .populate("department", "name code isActive")
+            .populate("createdBy", "fullName email username")
             .populate({
                 path: "modules",
-                populate: { path: "lessons" }
+                select: "title",
+                populate: { path: "lessons", select: "title" }
             })
-            .populate("createdBy", "fullName email role")
 
-        if (!course) {
-            return res.status(404).json({ message: "Course not found" })
+        if (!course) return res.status(404).json({ message: "Course Not found" })
+
+        const department = course.department;
+
+        //only admins
+        if (req.user.role === "admin") {
+            return res.status(200).json({
+                message: "Course fetched successfully",
+                course
+            })
         }
 
-        return res.status(200).json({
-            message: "Fetched course successfully",
-            course
+        if (!department?.isActive) return res.status(403).json({ message: "Department is inActive" })
+
+        const enrollment = await CourseEnrollment.findOne({
+            user: req.user._id,
+            course: courseId
         })
+
+        if (req.user.role === "teacher") {
+            if (!enrollment || enrollment.role !== "teacher") {
+                return res.status(403).json({ message: "You're not assigned to teach this course" })
+            }
+            return res.status(200).json({
+                message: "Course fetched successfully",
+                course
+            })
+        }
+
+        if (req.user.role === "student") {
+            if (!enrollment || enrollment.role !== "student") {
+                return res.status(403).json({ message: "You're not enrolled in this course" })
+            }
+
+            if (!course.isPublished) return res.status(403).json({ message: "Course is not published yet" })
+
+            return res.status(200).json({
+                message: "Course fetched successfully",
+                course
+            })
+        }
+
+        if (req.user.role === "manager") {
+            return res.status(200).json({
+                message: "Course fetches successfully",
+                course
+            })
+        }
+
+        return res.status(403).json({ message: "Not authorized" })
     } catch (error) {
-        console.error("Failed to fetch course:", error.message);
-        return res.status(500).json({ message: "Failed to fetch course" });
+        console.error("Failed to fetch course", error)
+        return res.status(500).json({ message: "Failed to fetch course" })
     }
 }
 

@@ -8,7 +8,7 @@ const router = express.Router();
 router.post("/create/:departmentId", verifyJWT, authorizeRoles("teacher", "admin"), createCourse)
 router.get("/courses", verifyJWT, getAllCourses);
 router.get("/my-courses", verifyJWT, getMyCourse)
-router.get("/course/:id", verifyJWT, getCourseById)
+router.get("/course/:courseId", verifyJWT, getCourseById)
 router.patch("/update/:id", verifyJWT, authorizeRoles("admin", "teacher"), updateCourse)
 router.delete("/delete/:id", verifyJWT, authorizeRoles("admin", "manager"), deleteCourse)
 router.patch("/publish/:id", verifyJWT, authorizeRoles("admin", "teacher"), publishCourse)
