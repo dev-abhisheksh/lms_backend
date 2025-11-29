@@ -26,6 +26,11 @@ const assignUserToCourse = async (req, res) => {
             return res.status(403).json({ message: "Role must be either student or teacher" })
         }
 
+        // User cannot be enrolled as a role they don't globally have
+        if (role !== user.role) {
+            return res.status(400).json({ message: `User is a global '${user.role}', cannot enroll as '${role}'` });
+        }
+
         //prevent enrolled user to enroll again
         const existingEnrollment = await CourseEnrollment.findOne({ user: userId, course: courseId })
         if (existingEnrollment) return res.status(409).json({ message: "User is already enrolled in this course" })
@@ -46,50 +51,55 @@ const assignUserToCourse = async (req, res) => {
     }
 }
 
-const getCourseParticipants = async (req, res) => {
+const getAllEnrollmentsForCourse = async (req, res) => {
     try {
         const { courseId } = req.params;
-        if (!courseId) return res.status(400).json({ message: "ID is required" })
+        if (!courseId) return res.status(400).json({ message: "CourseID is required" })
 
-        //existing course
-        const existingCourse = await Course.findById(courseId).select("title description")
-        if (!existingCourse) return res.status(404).json({ message: "Course not found" })
+        const course = await Course.findById(courseId)
+            .populate("department", "name code isActive")
+        if (!course) return res.status(404).json({ message: "Course not found" })
 
-        const enrollments = await CourseEnrollment.find({ course: courseId })
-            .populate("user", "fullName email role")
-            .populate("course", "title description")
-            .lean()
-
-        if (enrollments.length === 0) {
+        if (req.user.role === "admin") {
+            const enrollments = await CourseEnrollment.find({ course: courseId })
+                .populate("user", "fullName username email role")
+                .populate("course", "title courseCode ")
             return res.status(200).json({
-                message: "No users enrolled in this course yet",
-                course: existingCourse,
-                participants: { teachers: [], students: [], managers: [] }
+                message: "Enrollments fetched successfully",
+                count: enrollments.length,
+                enrollments,
             })
         }
 
-        const teachers = [];
-        const managers = [];
-        const students = [];
+        if (!course.department?.isActive) {
+            return res.status(403).json({ message: "Department is deActive" })
+        }
 
-        enrollments.forEach((enroll) => {
-            if (enroll.role === "teacher") teachers.push(enroll.user)
-            else if (enroll.role === "student") students.push(enroll.user)
-            else if (enroll.role === "manager") managers.push(enroll.user)
-        })
+        if (req.user.role === "teacher") {
+            const enrolledTeacher = await CourseEnrollment.findOne({
+                user: req.user._id,
+                course: courseId,
+                role: "teacher"
+            })
+            if (!enrolledTeacher) return res.status(403).json({ message: "Your not assigned to teach this course" })
 
-        const participants = { teachers, students, managers };
+            const enrollments = await CourseEnrollment.find({ course: courseId })
+                .populate("user", "fullName username email role")
+                .populate("course", "title courseCode")
+            return res.status(200).json({
+                message: "Enrollments fetched successfully",
+                enrollments
+            })
+        }
 
-        return res.status(200).json({
-            message: "Fetched all the enrollments",
-            course: existingCourse,
-            participants
-        })
+        return res.status(403).json({ message: "Not authorized" })
+
     } catch (error) {
-        console.error("Failed to fetch enrollments", error.message)
-        return res.status(500).json({ message: "Failed to fetch enrollments" })
+        console.error("Failed to get enrollments", error)
+        return res.status(500).json({ message: "Failed to get enrollments" })
     }
 }
+
 
 const getMyEnrollments = async (req, res) => {
     try {
@@ -220,8 +230,8 @@ const getCourseEnrollmentsSummary = async (req, res) => {
 
 export {
     assignUserToCourse,
-    getCourseParticipants,
     getMyEnrollments,
     removeUserFromCourse,
-    getCourseEnrollmentsSummary
+    getCourseEnrollmentsSummary,
+    getAllEnrollmentsForCourse
 }
