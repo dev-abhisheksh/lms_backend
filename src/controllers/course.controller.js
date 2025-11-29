@@ -240,40 +240,57 @@ const getCourseById = async (req, res) => {
 
 const updateCourse = async (req, res) => {
     try {
-        const { title, description, department, thumbnail } = req.body;
-        const { id } = req.params;
+        const { courseId } = req.params;
+        const { title, description, department, courseCode } = req.body;
+        if (!courseId) return res.status(400).json({ message: "CourseID is required" })
 
-        const course = await Course.findById(id);
-        if (!course) {
-            return res.status(404).json({ message: "Course not found" })
-        }
+        const course = await Course.findById(courseId);
+        if (!course) return res.status(404).json({ message: "Course not found" })
 
-        if (req.user.role === "admin") {
-
-        } else {
-            const isAuthorizedTeacher = await CourseEnrollment.findOne({
+        let enrollment = null;
+        if (req.user.role !== "admin") {
+            enrollment = await CourseEnrollment.findOne({
                 user: req.user._id,
-                course: id,
-                role: "teacher"
+                course: courseId
             })
 
-            if (course.createdBy.toString() != req.user._id.toString() && !isAuthorizedTeacher) {
-                return res.status(403).json({ message: "You are not allowed to edit this course" });
+            if (req.user.role === "teacher") {
+                if (!enrollment || enrollment.role !== "teacher") {
+                    return res.status(403).json({ message: "Not authorized to update this course" })
+                }
+            } else {
+                return res.status(403).json({ message: "Not authorized" })
             }
         }
 
-        if (title) course.title = title.trim();
-        if (description) course.description = description.trim();
-        if (thumbnail) course.thumbnail = thumbnail;
-        if (department) course.department = department;
+        const updateData = {
+            ...(title && { title: title.trim() }),
+            ...(description && { description: description.trim() }),
+            ...(courseCode && { courseCode: courseCode.trim() }),
+            ...(department && { department }),
+            ...(isPublished !== undefined && { isPublished }),
+        }
 
-        await course.save();
+        if (courseCode) {
+            const exists = await Course.findOne({
+                courseCode: courseCode.trim(),
+                _id: { $ne: courseId }
+            })
+            if (exists) return res.status(409).json({ message: "courseCode already in use" })
+        }
+
+        const updatedCourse = await Course.findByIdAndUpdate(
+            courseId,
+            updateData,
+            { new: true }
+        )
+
         return res.status(200).json({
-            message: "Course updated succcessfully",
-            course
+            message: "Course updated successfully",
+            course: updatedCourse
         })
     } catch (error) {
-        console.error("Failed to update course:", error.message);
+        console.error("Update Course Error:", error);
         return res.status(500).json({ message: "Failed to update course" });
     }
 }
