@@ -241,7 +241,7 @@ const getCourseById = async (req, res) => {
 const updateCourse = async (req, res) => {
     try {
         const { courseId } = req.params;
-        const { title, description, department, courseCode } = req.body;
+        const { title, description, department, courseCode, isPublished } = req.body;
         if (!courseId) return res.status(400).json({ message: "CourseID is required" })
 
         const course = await Course.findById(courseId);
@@ -262,7 +262,7 @@ const updateCourse = async (req, res) => {
                 return res.status(403).json({ message: "Not authorized" })
             }
         }
-
+        // const isPublished = course.isPublished
         const updateData = {
             ...(title && { title: title.trim() }),
             ...(description && { description: description.trim() }),
