@@ -100,32 +100,37 @@ const getAllEnrollmentsForCourse = async (req, res) => {
     }
 }
 
-
 const getMyEnrollments = async (req, res) => {
     try {
-        const userId = req.user._id;
+        if (req.user.role === "admin" || req.user.role === "manager") {
+            return res.status(403).json({ message: "Enrollments not available for admin and manager" })
+        }
 
-        //user exists check
-        const user = await User.findById(userId);
-        if (!user) return res.status(404).json({ message: "User not found" })
+        let enrollments = await CourseEnrollment.find({ user: req.user._id })
+            .populate({
+                path: "course",
+                select: "title description isPublished",
+                populate: {
+                    path: "department",
+                    select: "name code isActive"
+                }
+            })
 
-        const enrollments = await CourseEnrollment.find({ user: userId })
-            .populate("course", "title description isPublished")
-            .lean()
+        if (!enrollments) return res.status(404).json({ message: "Enrollment not found" })
 
-        if (enrollments.length === 0) {
-            return res.status(200).json({ message: "You haven’t enrolled in any courses yet", myEnrolls: [] });
+        enrollments = enrollments.filter(en => en.course.department.isActive)
+        if (req.user.role === "student") {
+            enrollments = enrollments.filter(en => en.course.isPublished)
         }
 
         return res.status(200).json({
-            message: "Fetched all my Enrollments",
-            enrollments,
-            totalEnrollments: enrollments.length
-
+            message: "Fetched your enrollments",
+            count: enrollments.length,
+            enrollments
         })
     } catch (error) {
-        console.error("Failed to fetch user enrollments", error.message);
-        return res.status(500).json({ message: "Failed to fetch user enrollments" });
+        console.error("Failed to fetch your all enrollments", error)
+        return res.status(500).json({ message: "Failed to fetch your all enrollments" })
     }
 }
 

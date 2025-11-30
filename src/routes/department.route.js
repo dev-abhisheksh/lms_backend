@@ -7,7 +7,7 @@ const router = express.Router();
 router.post("/create", verifyJWT, authorizeRoles("admin"), createDepartment)
 router.get("/", verifyJWT, getAllDepartments)
 router.get("/:departmentId", verifyJWT, getDepartmentById)
-router.get("/toggle-department/:departmentId", verifyJWT, authorizeRoles("admin", toggleDepartment))
+router.get("/toggle-department/:departmentId", verifyJWT, authorizeRoles("admin"), toggleDepartment)
 router.patch("/update/:departmentId", verifyJWT, authorizeRoles("admin"), updateDepartment)
 
 export default router;

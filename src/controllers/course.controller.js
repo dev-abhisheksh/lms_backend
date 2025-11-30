@@ -34,7 +34,9 @@ const createCourse = async (req, res) => {
 
         //checking if the department exists
         const existingDepartment = await Department.findById(departmentId).select("name code")
-        if (!departmentId) return res.status(404).json({ message: "Department doesnt exists" })
+        if (!existingDepartment) return res.status(404).json({ message: "Department doesnt exists" })
+
+        if (existingDepartment.isActive === false) return res.status(400).json({ message: "Cannot create course in an inactive department" })
 
         const course = await Course.create({
             title: title.trim(),

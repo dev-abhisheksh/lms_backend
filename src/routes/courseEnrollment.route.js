@@ -6,7 +6,7 @@ const router = express.Router();
 
 router.post("/new/:courseId", verifyJWT, authorizeRoles("admin", "manager"), assignUserToCourse);
 router.get("/participants/:courseId", verifyJWT, authorizeRoles("admin", "teacher"), getAllEnrollmentsForCourse)
-router.get("/me", verifyJWT, getMyEnrollments)
+router.get("/my-enrollments", verifyJWT, getMyEnrollments)
 router.delete("/remove/:courseId/:userId", verifyJWT, authorizeRoles("admin", "manager"), removeUserFromCourse)
 router.get("/summary/:courseId", verifyJWT, authorizeRoles("admin", "manager", "teacher"), getCourseEnrollmentsSummary)
 
