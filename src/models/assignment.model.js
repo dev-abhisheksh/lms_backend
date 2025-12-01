@@ -35,9 +35,21 @@ const assignmentSchema = new mongoose.Schema({
         required: true
     },
 
+    module: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Module",
+        default: null
+    },
+
     maxMarks: {
         type: Number,
-        default: 100
+        default: 100,
+        min: 1
+    },
+
+    isActive: {
+        type: Boolean,
+        default: true
     },
 
     attachments: [
@@ -49,8 +61,7 @@ const assignmentSchema = new mongoose.Schema({
             format: String,
             original_filename: String
         }
-    ]
-    ,
+    ],
 
     isPublished: {
         type: Boolean,
@@ -61,11 +72,12 @@ const assignmentSchema = new mongoose.Schema({
         type: Date,
         default: null
     }
-}, { timestamps: true })
+
+}, { timestamps: true });
 
 assignmentSchema.index({ course: 1 });
 assignmentSchema.index({ createdBy: 1 });
 assignmentSchema.index({ dueDate: 1 });
+assignmentSchema.index({ isActive: 1 });
 
-
-export const Assignment = mongoose.model("Assignment", assignmentSchema)
+export const Assignment = mongoose.model("Assignment", assignmentSchema);
