@@ -20,7 +20,7 @@ const createAssignment = async (req, res) => {
 
         const course = await Course.findById(courseId);
         if (!course) return res.status(404).json({ message: "Course not found" });
-        if (!course.isActive) return res.status(403).json({ message: "Course is not active" });
+        // if (!course.isActive) return res.status(403).json({ message: "Course is not active" });
         if (!course.isPublished) return res.status(403).json({ message: "Course is not published" });
 
         if (req.user.role !== "admin") {
@@ -93,7 +93,71 @@ const createAssignment = async (req, res) => {
     }
 };
 
+const updateAssignment = async (req, res) => {
+    try {
+        const { assignmentId } = req.params;
+        const { title, description, dueDate, maxMarks } = req.body
+        if (!assignmentId) return res.status(400).json({ message: "Assignment ID is required" })
+
+        const assignment = await Assignment.findById(assignmentId)
+            .populate("createdBy", "role")
+            .populate("course", "isPublished")
+        if (!assignment) return res.status(404).json({ message: "Assignment not found" })
+
+        //role validations
+        if (req.user.role === "admin") {
+
+        } else {
+            if (req.user.role === "teacher") {
+                const teacherEnrollment = await CourseEnrollment.findOne({
+                    user: req.user._id,
+                    course: assignment.course._id,
+                    role: "teacher"
+                })
+                if (!teacherEnrollment) return res.status(403).json({ message: "You're not assigned to teach this class" })
+            } else {
+                return res.status(403).json({ message: "You're not assigned to teach this class" })
+            }
+        }
+
+        //business rule
+        if (!assignment.course.isPublished) return res.status(403).json({ message: "Course not published" })
+
+        const updateDate = {};
+
+        if (title) updateDate.title = title.trim();
+        if (description) updateDate.description = description.trim() || ""
+
+        if (dueDate) {
+            const newDue = new Date(dueDate)
+            if (newDue <= new Date()) {
+                return res.status(400).json({ message: "Due Date must be in the future" })
+            }
+            updateDate.dueDate = newDue;
+        }
+
+        if (maxMarks) {
+            if (maxMarks <= 0) return res.status(400).json({ message: "maxMarks must be greater then zero" })
+            updateDate.maxMarks = maxMarks
+        }
+
+        const updatedAssignment = await Assignment.findByIdAndUpdate(
+            assignmentId,
+            updateDate,
+            { new: true }
+        )
+
+        return res.status(200).json({
+            message: "Assignment updated successfully",
+            updatedAssignment
+        })
+    } catch (error) {
+        console.error("Failed to update assignment:", error.message);
+        return res.status(500).json({ message: "Failed to update assignment" });
+    }
+}
+
 export {
     createAssignment,
-
+    updateAssignment
 }
