@@ -239,8 +239,74 @@ const getAssignments = async (req, res) => {
     }
 }
 
+const getAssignmentByID = async (req, res) => {
+    try {
+        const { assignmentId } = req.params;
+        if (!assignmentId) return res.status(400).json({ message: "Assignment ID is required" })
+
+        let assignment = await Assignment.findById(assignmentId)
+            .populate({
+                path: "course",
+                select: "title courseCode isPublished",
+                populate: { path: "department", select: "name isActive" }
+            })
+        if (!assignment) return res.status(404).json({ message: "Assignment not found" })
+
+        const course = assignment?.course;
+        const department = assignment?.course?.department;
+
+        //Roles validation
+        if (req.user.role === "admin") {
+            return res.status(200).json({
+                message: "Assignment fetched successfully",
+                assignment
+            })
+        }
+
+        if (!department?.isActive) return res.status(403).json({ message: "Department is not active" })
+        if (!assignment.isActive) return res.status(403).json({ message: "Assignment has been deleted" })
+
+        if (req.user.role === "teacher") {
+            const teacherEnrollment = await CourseEnrollment.findOne({
+                user: req.user._id,
+                course: course._id,
+                role: "teacher"
+            })
+            if (!teacherEnrollment) return res.status(403).json({ message: "You're not assigned to teach this course" })
+
+            return res.status(200).json({
+                message: "Assignment fetched successfully",
+                assignment
+            })
+        }
+
+        if (!assignment.isPublished) return res.status(403).json({ message: "Assignment is not published yet!" })
+
+        if (req.user.role === "student") {
+            const studentEnrollment = await CourseEnrollment.findOne({
+                user: req.user._id,
+                course: course._id,
+                role: "student"
+            })
+            if (!studentEnrollment) return res.status(403).json({ message: "You're not enrolled in this course" })
+
+            return res.status(200).json({
+                message: "Assignment fetched successfully",
+                assignment
+            })
+        }
+
+        return res.status(403).json({ message: "Not authorized" })
+
+    } catch (error) {
+        console.error("Failed to fetch assignment", error)
+        return res.status(500).json({ message: "Failed to fetch assignment" })
+    }
+}
+
 export {
     createAssignment,
     updateAssignment,
-    getAssignments
+    getAssignments,
+    getAssignmentByID
 }
