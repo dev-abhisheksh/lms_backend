@@ -37,8 +37,8 @@ const createAssignment = async (req, res) => {
             if (!teacherEnrollment) {
                 return res.status(403).json({ message: "You're not assigned to teach this course" });
             }
-        }else{
-            return res.status(403).json({message: "Only assigned teachers can create assignments"})
+        } else {
+            return res.status(403).json({ message: "Only assigned teachers can create assignments" })
         }
 
         const now = new Date();
@@ -418,11 +418,66 @@ const getMyAssignments = async (req, res) => {
     }
 }
 
+const deleteAssignment = async (req, res) => {
+    try {
+        const { assignmentId } = req.params;
+        if (!assignmentId) return res.status(400).json({ message: "AssignmentID is required" })
+
+        const assignment = await Assignment.findById(assignmentId)
+            .populate({
+                path: "course",
+                select: "title courseCode isPublished",
+                populate: { path: "department", select: "name code isActive" }
+            })
+        if (!assignment) return res.status(404).json({ message: "Assignment not found" })
+
+        const department = assignment?.course?.department
+        const course = assignment?.course
+
+        if (req.user.role !== "admin" && !department?.isActive) return res.status(403).json({ message: "Department is not active" })
+
+        if (!assignment?.isActive) return res.status(403).json({ message: "Assignment is already deleted" })
+
+        if (req.user.role === "admin") {
+            assignment.isActive = false
+            assignment.isPublished = false
+            assignment.deletedAt = new Date()
+            await assignment.save()
+
+            return res.status(200).json({ message: "Assignment deleted successfully (admin : soft-delete)" })
+        }
+
+        if (req.user.role === "teacher") {
+            const teacherEnrollment = await CourseEnrollment.findOne({
+                user: req.user._id,
+                course: assignment?.course?._id,
+                role: "teacher"
+            })
+            if (!teacherEnrollment) return res.status(403).json({ message: "You're not assigned to teach this course" })
+            if (assignment.createdBy.toString() !== req.user._id.toString()) {
+                return res.status(403).json({ message: "You're not the creator" })
+            }
+            assignment.isActive = false
+            assignment.isPublished = false
+            assignment.deletedAt = new Date()
+            await assignment.save()
+
+            return res.status(200).json({ message: "Assignment deleted successfully" })
+        }
+
+        return res.status(403).json({ message: "Not authorized!" })
+    } catch (error) {
+        console.error("Failed to delete assignment", error)
+        return res.status(500).json({ message: "Failed to delete assignment" })
+    }
+}
+
 export {
     createAssignment,
     updateAssignment,
     getAssignments,
     getAssignmentByID,
     togglePublishUnpublishAssignment,
-    getMyAssignments
+    getMyAssignments,
+    deleteAssignment
 }
