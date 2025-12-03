@@ -7,48 +7,68 @@ import { CourseEnrollment } from "../models/courseEnrollment.model.js"
 const createSubmission = async (req, res) => {
     try {
         const { assignmentId } = req.params;
-        if (!assignmentId) return res.status(400).json({ message: "Assignment ID is reqiored" })
+        if (!assignmentId) return res.status(400).json({ message: "AssignmentID is required" })
 
-        if (req.user.role !== "student") return res.status(403).json({ message: "Only students are allowed for submissions" })
+        if (req.user.role !== "student") {
+            return res.status(403).json({ message: "Only students are allowed to submit" })
+        }
 
-        //confirming if the assignments exits, if yes returning basic data about it
-        const assignment = await Assignment.findById(assignmentId).select("title dueDate isPublished course")
+        const assignment = await Assignment.findById(assignmentId)
+            .populate({
+                path: "course",
+                select: "title isPublished",
+                populate: { path: "department", select: "name isActive" }
+            })
+            .select("title isPublished isActive dueDate allowLate")
         if (!assignment) return res.status(404).json({ message: "Assignment not found" })
 
-        //checking if the assignment is published or not
-        if (!assignment.isPublished) return res.status(400).json({ message: "Assignment is not yet published" })
+        const course = assignment?.course;
+        const department = assignment?.course?.department
 
-        //checking if the user is enrolled in the course or not
-        const enrollment = await CourseEnrollment.findOne({ user: req.user._id, course: assignment.course })
-        if (!enrollment) return res.status(403).json({ message: "User is not enrolled in the couse" })
+        if (!department?.isActive) return res.status(403).json({ message: "Department is not active" })
+        if (!course.isPublished) return res.status(403).json({ message: "Course is not published" })
+        if (!assignment.isActive) return res.status(403).json({ message: "Cant make submission to a deleted assignment" })
+        if (!assignment.isPublished) return res.status(403).json({ message: "Assignment is not published yet" })
 
-        //checking whether the user is already submitted the assignment
-        const existingSubmission = await Submission.findOne({ student: req.user._id, assignment: assignmentId, status: { $ne: "deleted" } })
-        if (existingSubmission) return res.status(409).json({ message: "You've already submitted the assignment" })
+        const studentEnrollment = await CourseEnrollment.findOne({
+            user: req.user._id,
+            course: course._id,
+            role: "student"
+        })
+        if (!studentEnrollment) return res.status(403).json({ message: "You're not enrolled in this course" })
 
-        //whether the submission is late
+        const existingSubmission = await Submission.findOne({
+            student: req.user._id,
+            assignment: assignmentId,
+            status: { $ne: "deleted" }
+        })
+
+        if (existingSubmission) return res.status(409).json({ message: "You've already submitted" })
+
         const now = new Date();
         const isLate = now > assignment.dueDate;
-        let status = isLate ? "late" : "submitted"
+        const status = isLate ? "late" : "submitted"
 
-        //file or resourse uploads
-        const filesArray = [];
-        if (req.files && req.files.length > 0) {
-            for (const file of req.files) {
-                const uploaded = await uploadToCloudinary(file.buffer, "submissions");
-                filesArray.push({
-                    public_id: uploaded.public_id,
-                    url: uploaded.url,
-                    secure_url: uploaded.secure_url,
-                    bytes: uploaded.bytes,
-                    format: uploaded.format,
-                    original_filename: uploaded.original_filename
+        //file handling
+        let filesArray = [];
+        if (req.files?.length > 0) {
+            filesArray = await Promise.all(
+                req.files.map(async (file) => {
+                    const uploader = await uploadToCloudinary(file.buffer, "submissions");
+                    return {
+                        public_id: uploader.public_id,
+                        url: uploader.url,
+                        secure_url: uploader.secure_url,
+                        bytes: uploader.bytes,
+                        format: uploader.format,
+                        original_filename: uploader.original_filename
+                    }
                 })
-            }
+            )
         }
 
         if (filesArray.length === 0 && !req.body.textAnswer) {
-            return res.status(400).json({ message: "Please either provide a file or text answers" })
+            return res.status(400).json({ message: "Provide either a file or text answer" });
         }
 
         const submission = await Submission.create({
@@ -61,12 +81,19 @@ const createSubmission = async (req, res) => {
             status
         })
 
+        //linking submission to the assinment
+        await Assignment.findByIdAndUpdate(
+            assignmentId,
+            { $push: { submissions: submission._id } }
+        )
+
         return res.status(201).json({
             message: isLate
-                ? "Submission uploaded successfully (marked as late)"
+                ? "Submission uploaded (late)"
                 : "Submission uploaded successfully",
             submission
-        })
+        });
+
     } catch (error) {
         console.error("Submission Error:", error);
         return res.status(500).json({ message: "Failed to create submission" });
