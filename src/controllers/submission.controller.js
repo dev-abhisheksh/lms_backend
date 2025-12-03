@@ -85,10 +85,10 @@ const createSubmission = async (req, res) => {
 
 
         //linking submission to the assinment
-        await Assignment.findByIdAndUpdate(
-            assignmentId,
-            { $push: { submissions: submission._id } }
-        )
+        // await Assignment.findByIdAndUpdate(
+        //     assignmentId,
+        //     { $push: { submissions: submission._id } }
+        // )
 
         return res.status(201).json({
             message: isLate
