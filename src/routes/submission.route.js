@@ -1,7 +1,7 @@
 import express from "express"
 import verifyJWT from "../middlewares/auth.midleware.js"
 import authorizeRoles from "../middlewares/role.middleware.js";
-import { createSubmission, deleteSubmission, getAllSubmissions, gradingSubissions, mySubmissions } from "../controllers/submission.controller.js";
+import { createSubmission, deleteSubmission, getAllSubmissions, getSingleSubmission, gradingSubissions, mySubmissions } from "../controllers/submission.controller.js";
 import { upload } from "../middlewares/multer.middleware.js";
 
 const router = express.Router();
@@ -11,5 +11,6 @@ router.get("/submissions/:assignmentId", verifyJWT, authorizeRoles("admin", "tea
 router.post("/grade/:submissionId", verifyJWT, authorizeRoles("teacher", "admin"), gradingSubissions)
 router.patch("/delete/:submissionId", verifyJWT, authorizeRoles("admin", "student"), deleteSubmission)
 router.get("/my-submissions", verifyJWT, authorizeRoles("student"), mySubmissions)
+router.get("/submission/:submissionId", verifyJWT, authorizeRoles("admin", "teacher"), getSingleSubmission)
 
 export default router;
