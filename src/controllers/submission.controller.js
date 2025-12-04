@@ -340,10 +340,76 @@ const mySubmissions = async (req, res) => {
     }
 }
 
+const getSingleSubmission = async (req, res) => {
+    try {
+        if (!["admin", "teacher"].includes(req.user.role)) {
+            return res.status(403).json({ message: "Only admins and teachers are allowed" });
+        }
+
+        const { submissionId } = req.params;
+        if (!submissionId) return res.status(400).json({ message: "SubmissionID is required" });
+
+        const submission = await Submission.findById(submissionId)
+            .populate({
+                path: "assignment",
+                select: "title isActive isPublished course",
+                populate: {
+                    path: "course",
+                    select: "title isPublished department",
+                    populate: { path: "department", select: "name code isActive" }
+                }
+            });
+
+        if (!submission) return res.status(404).json({ message: "Submission not found" });
+
+        const assignment = submission.assignment;
+        const course = assignment.course;
+        const department = course.department;
+
+        if (!assignment.isActive)
+            return res.status(400).json({ message: "Assignment is deleted" });
+
+        // Admin bypasses all checks
+        if (req.user.role === "admin") {
+            return res.status(200).json({ message: "Submission fetched successfully", submission });
+        }
+
+        // Teacher checks
+        if (!department.isActive)
+            return res.status(403).json({ message: "Department is not active" });
+
+        if (!course.isPublished)
+            return res.status(403).json({ message: "Course is not published" });
+
+        if (!assignment.isPublished)
+            return res.status(403).json({ message: "Assignment is not published" });
+
+        const teacherEnrollment = await CourseEnrollment.findOne({
+            user: req.user._id,
+            course: course._id,
+            role: "teacher"
+        });
+
+        if (!teacherEnrollment)
+            return res.status(403).json({ message: "You're not assigned to this course" });
+
+        return res.status(200).json({
+            message: "Submission fetched successfully",
+            submission
+        });
+
+    } catch (error) {
+        console.error("Failed to fetch submission:", error);
+        return res.status(500).json({ message: "Failed to fetch submission" });
+    }
+};
+
+
 export {
     createSubmission,
     getAllSubmissions,
     gradingSubissions,
     deleteSubmission,
-    mySubmissions
+    mySubmissions,
+    getSingleSubmission
 };
