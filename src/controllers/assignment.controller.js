@@ -430,6 +430,72 @@ const deleteAssignment = async (req, res) => {
     }
 }
 
+const getAssignmentSummary = async (req, res) => {
+    try {
+        const { assignmentId } = req.params;
+        if (!assignmentId) return res.status(400).json({ message: "AssignmentID is required" })
+
+        const assignment = await Assignment.findById(assignmentId)
+            .populate({
+                path: "course",
+                select: "title isPublished",
+                populate: {
+                    path: "department",
+                    select: "name isActive"
+                }
+            })
+
+        if (!assignment) return res.status(404).json({ message: "Assignment not found" })
+
+        const department = assignment?.course?.department;
+        const course = assignment?.course;
+
+        if (!["admin", "teacher"].includes(req.user.role)) {
+            return res.status(403).json({ message: "Not authorized" });
+        }
+
+        if (req.user.role !== "admin") {
+            if (!department.isActive) return res.status(403).json({ message: "department is not active" })
+            if (!assignment.isActive) return res.status(403).json({ message: "Assignment is deleted" })
+
+            const teacherEnrollment = await CourseEnrollment.findOne({
+                user: req.user._id,
+                course: course._id,
+                role: "teacher"
+            })
+
+            if (!teacherEnrollment) return res.status(403).json({ message: "You're not assigned to teach this course" })
+        }
+
+        const submissions = await Submission.find({
+            assignment: assignmentId,
+            status: { $ne: "deleted" }
+        })
+            .select("status isLate")
+
+        const total = submissions.length
+        const graded = submissions.filter(s => s.status === "graded").length;
+        const late = submissions.filter(s => s.status === "late").length
+        const submitted = submissions.filter(s => s.status === "submitted" || s.status === "late")
+        const pending = total - graded
+
+        return res.status(200).json({
+            message: "Assignment summary fetched successfully",
+            summary: {
+                total,
+                submitted,
+                late,
+                graded,
+                pending
+            }
+        })
+
+    } catch (error) {
+        console.error("Failed to fetch assignment summary:", error);
+        return res.status(500).json({ message: "Failed to fetch assignment summary" });
+    }
+}
+
 
 export {
     createAssignment,
@@ -437,5 +503,6 @@ export {
     getAssignments,
     getAssignmentByID,
     togglePublishUnpublishAssignment,
-    deleteAssignment
+    deleteAssignment,
+    getAssignmentSummary
 }
