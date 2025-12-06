@@ -1,9 +1,7 @@
 import { Submission } from "../models/submissions.model.js";
 import { Assignment } from "../models/assignment.model.js";
 import cloudinary, { uploadToCloudinary } from "../utils/cloudinary.js";
-import { Course } from "../models/course.model.js";
 import { CourseEnrollment } from "../models/courseEnrollment.model.js"
-import { populate } from "dotenv";
 
 const createSubmission = async (req, res) => {
     try {
@@ -83,13 +81,6 @@ const createSubmission = async (req, res) => {
             isLate,
             status
         })
-
-
-        //linking submission to the assinment
-        // await Assignment.findByIdAndUpdate(
-        //     assignmentId,
-        //     { $push: { submissions: submission._id } }
-        // )
 
         return res.status(201).json({
             message: isLate
