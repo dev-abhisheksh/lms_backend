@@ -577,5 +577,6 @@ export {
     deleteSubmission,
     mySubmissions,
     getSingleSubmission,
-    updateSubmission
+    updateSubmission,
+    getSubmissionStatusForAssignment
 };
