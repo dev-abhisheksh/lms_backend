@@ -429,7 +429,7 @@ const updateSubmission = async (req, res) => {
         const assignment = submission.assignment;
         const course = assignment.course;
         const department = course.department;
-s
+        s
         if (!department.isActive) return res.status(403).json({ message: "Department is not active" });
         if (!course.isPublished) return res.status(403).json({ message: "Course is not published" });
         if (!assignment.isActive) return res.status(403).json({ message: "Assignment is deleted" });
@@ -498,6 +498,76 @@ s
         return res.status(500).json({ message: "Failed to update submission" });
     }
 };
+
+const getSubmissionStatusForAssignment = async (req, res) => {
+    try {
+        const { assignmentId } = req.params;
+        if (!assignmentId) return res.status(400).json({ message: "AssignmentID is required" })
+
+        const assignment = await Assignment.findById(assignmentId)
+            .populate({
+                path: "course",
+                select: "title isPublished",
+                populate: { path: "department", select: "name isActive" }
+            })
+
+        if (!assignment) return res.status(404).json({ message: "Assignment not found" })
+
+        const course = assignment?.course;
+        const department = assignment?.course?.department;
+
+        if (!["admin", "teacher"].includes(req.user.role)) {
+            return res.status(403).json({ message: "Only admins and assigned teachers are permitted" })
+        }
+
+        if (req.user.role !== "admin") {
+            if (!department.isActive) return res.status(403).json({ message: "Department is not active" })
+            if (!assignment.isActive) return res.status(403).json({ message: "Assignment is deleted" })
+
+            const teacherEnrollment = await CourseEnrollment.findOne({
+                user: req.user._id,
+                course: course._id,
+                role: "teacher"
+            })
+
+            if (!teacherEnrollment) return res.status(403).json({ message: "You're not assigned to teach this course" })
+        }
+
+        const submissions = await Submission.find({
+            assignment: assignmentId,
+            status: { $ne: "deleted" }
+        }).select("student", "fullName username email")
+
+        const enrolledStudent = await CourseEnrollment.find({
+            course: courseId,
+            role: "student"
+        }).populate("user", "fullName username email")
+
+        const result = enrolledStudent.map((enrolled) => {
+            const sub = submissions.find(
+                (s) => s.student._id.toString() === enrolled.user._id.toString())
+
+            return {
+                student: enrolled.user,
+                status: sub ? sub.status : "not_submitted",
+                submittedAt: sub?.submittedAt || null,
+                isLate: sub?.isLate || false,
+                grade: sub?.grade || null
+            }
+        })
+
+        return res.status(200).json({
+            message: "Submission status fetched successfully",
+            count: result.length,
+            assignment: assignment.title,
+            results: result
+        });
+
+    } catch (error) {
+        console.error("Failed to fetch submission status", error);
+        return res.status(500).json({ message: "Failed to fetch submission status" });
+    }
+}
 
 
 export {
