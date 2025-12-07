@@ -1,3 +1,5 @@
+import mongoose from "mongoose";
+
 const lessonSchema = new mongoose.Schema({
     title: {
         type: String,
@@ -65,4 +67,5 @@ lessonSchema.index({ module: 1 });
 lessonSchema.index({ course: 1 });
 lessonSchema.index({ isActive: 1 });
 
-export const Lesson = mongoose.model("Lesson", lessonSchema);
+
+export const Lesson = mongoose.model("Lesson", lessonSchema)
