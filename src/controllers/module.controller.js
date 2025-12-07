@@ -1,7 +1,7 @@
 import { Course } from "../models/course.model.js";
 import { CourseEnrollment } from "../models/courseEnrollment.model.js";
 import { Module } from "../models/module.model.js";
-
+import { Lesson } from "../models/lesson.model.js"
 
 const createModule = async (req, res) => {
     try {
@@ -280,10 +280,44 @@ const toggleModule = async (req, res) => {
     }
 }
 
+const deleteModule = async (req, res) => {
+    try {
+        const { moduleId } = req.params;
+        if (!moduleId) return res.status(400).json({ message: "ModuleID is required" })
+
+        if (req.user.role !== "admin") return res.status(403).json({ message: "Only Admins are allowed" })
+
+        const module = await Module.findById(moduleId)
+        if (!module) return res.status(404).json({ message: "Module not found" })
+
+        const lessons = await Lesson.find({ module: moduleId })
+
+        for (const lesson of lessons) {
+            if (lesson.files?.length > 0) {
+                for (const file of lesson.files) {
+                    if (file.public_id) {
+                        await cloudinary.uploader.destroy(file.public_id)
+                    }
+                }
+            }
+            await Lesson.findByIdAndDelete(lessons._id)
+        }
+
+        await Module.findByIdAndDelete(moduleId)
+
+        return res.status(200).json({ message: "Module and all related lessons deleted permanently" })
+
+    } catch (error) {
+        console.error("Failed to delete module", error);
+        return res.status(500).json({ message: "Failed to delete module" });
+    }
+}
+
 export {
     createModule,
     getAllModules,
     getModuleById,
     updateModule,
-    toggleModule
+    toggleModule,
+    deleteModule
 }
