@@ -187,8 +187,79 @@ const getModuleById = async (req, res) => {
     }
 }
 
+const updateModule = async (req, res) => {
+    try {
+        const { moduleId } = req.params;
+        const { title, description, isActive } = req.body;
+        if (!moduleId) return res.status(400).json({ message: "Module ID is required" })
+
+        if (req.user.role === "admin") {
+            const updateFields = {};
+            if (title) updateFields.title = title.trim();
+            if (description) updateFields.description = description.trim();
+            if (typeof isActive === "boolean") updateFields.isActive = isActive;
+
+            const updatedModule = await Module.findByIdAndUpdate(
+                moduleId,
+                updateFields,
+                { new: true }
+            )
+
+            if (!updatedModule) return res.status(404).json({ message: "Module not found" })
+
+            return res.status(200).json({
+                message: "Module updated successfully",
+                module: updatedModule
+            })
+        }
+
+        const module = await Module.findById(moduleId)
+            .populate({
+                path: "course",
+                select: "title isPublished",
+                populate: { path: "department", select: "name code isActive" }
+            })
+        if (!module) return res.status(404).json({ message: "Module not found" })
+
+        const course = module?.course;
+        const department = module?.course?.department;
+
+        if (!department.isActive) return res.status(403).json({ message: "Department is not active" })
+        if (!module.isActive) return res.status(403).json({ message: "Module is been deleted" })
+
+        const enrolledTeacher = await CourseEnrollment.findOne({
+            user: req.user._id,
+            course: course._id,
+            role: "teacher"
+        })
+        if (!enrolledTeacher) return res.status(400).json({ message: "You're not assigned to teach this course" })
+
+        const updateFields = {};
+        if (title) updateFields.title = title.trim()
+        if (description) updateFields.description = description.trim()
+
+        const updatedModule = await Module.findByIdAndUpdate(
+            moduleId,
+            updateFields,
+            { new: true }
+        )
+
+        if (!updatedModule) return res.status(404).json({ message: "Module not found" });
+
+        return res.status(200).json({
+            message: "Module updated successfully",
+            module: updatedModule
+        })
+
+    } catch (error) {
+        console.error("Failed to update module", error)
+        return res.status(500).json({ message: "Failed to update module" })
+    }
+}
+
 export {
     createModule,
     getAllModules,
-    getModuleById
+    getModuleById,
+    updateModule
 }
