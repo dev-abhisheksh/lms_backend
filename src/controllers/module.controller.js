@@ -257,9 +257,33 @@ const updateModule = async (req, res) => {
     }
 }
 
+const toggleModule = async (req, res) => {
+    try {
+        const { moduleId } = req.params;
+        if (!moduleId) return res.status(400).json({ message: "ModuleID is required" })
+
+        if (req.user.role !== "admin") return res.status(403).json({ message: "Not authorized. Access denied" })
+
+        const module = await Module.findById(moduleId)
+        if (!module) return res.status(404).json({ message: "Module not found" })
+
+        module.isActive = !module.isActive
+        await module.save()
+
+        return res.status(200).json({
+            message: `Module visibility set to ${module.isActive ? "visible" : "not visible"}`,
+            module
+        })
+    } catch (error) {
+        console.error("Failed to toggle module", error)
+        return res.status(500).json({ message: "Failed to toggle module" })
+    }
+}
+
 export {
     createModule,
     getAllModules,
     getModuleById,
-    updateModule
+    updateModule,
+    toggleModule
 }

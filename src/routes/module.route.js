@@ -1,7 +1,7 @@
 import express from "express";
 import verifyJWT from "../middlewares/auth.midleware.js";
 import authorizeRoles from "../middlewares/role.middleware.js";
-import { createModule, getAllModules, getModuleById, updateModule } from "../controllers/module.controller.js";
+import { createModule, getAllModules, getModuleById, toggleModule, updateModule } from "../controllers/module.controller.js";
 
 
 const router = express.Router();
@@ -10,5 +10,6 @@ router.post("/create/:courseId", verifyJWT, authorizeRoles("admin", "teacher"), 
 router.get("/:courseId", verifyJWT, getAllModules)
 router.get("/module/:moduleId", verifyJWT, getModuleById)
 router.patch("/update/:moduleId", verifyJWT, authorizeRoles("admin", "teacher"), updateModule)
+router.patch("/toggle/:moduleId", verifyJWT, authorizeRoles("admin"), toggleModule)
 
 export default router;
