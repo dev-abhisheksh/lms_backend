@@ -11,6 +11,6 @@ router.get("/:courseId", verifyJWT, getAllModules)
 router.get("/module/:moduleId", verifyJWT, getModuleById)
 router.patch("/update/:moduleId", verifyJWT, authorizeRoles("admin", "teacher"), updateModule)
 router.patch("/toggle/:moduleId", verifyJWT, authorizeRoles("admin"), toggleModule)
-router.delete("/delete/:moduleId", verifyJWT, authorizeRoles("admin", deleteModule))
+router.delete("/delete/:moduleId", verifyJWT, authorizeRoles("admin"), deleteModule)
 
 export default router;
