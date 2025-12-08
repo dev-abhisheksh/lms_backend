@@ -370,7 +370,7 @@ const toggleLesson = async (req, res) => {
             })
             if (!enrolledTeacher) return res.status(403).json({ message: "You're not assigned to teach this course" })
         }
-    
+
         lesson.isActive = !lesson.isActive
         await lesson.save();
 
@@ -383,10 +383,45 @@ const toggleLesson = async (req, res) => {
     }
 }
 
+const deleteLesson = async (req, res) => {
+    try {
+        const { lessonId } = req.params;
+        if (!lessonId) return res.status(400).json({ message: "LessonIS is required" })
+
+        if (req.user.role !== "admin") return res.status(403).json({ message: "Admins Only" })
+
+        const lesson = await Lesson.findById(lessonId)
+        if (!lesson) return res.status(404).json({ message: "Lesson not found" })
+
+        if (lesson.files?.length > 0) {
+            for (const file of lesson.files) {
+                if (file.public_id) await cloudinary.uploader.destroy(file.public_id,{
+                    resource_type: file.resource_type || "video"
+                })
+            }
+        }
+        const moduleId = lesson.module;
+        await Lesson.findByIdAndDelete(lessonId)
+
+        await Lesson.updateMany(
+            { module: moduleId, order: { $gt: lesson.order } },
+            { $inc: { order: -1 } }
+        );
+
+        return res.status(200).json({
+            message: "Lesson deleted successfully"
+        })
+    } catch (error) {
+        console.error("Failed to delete lesson", error)
+        return res.status(500).json({ message: "Failed to delete lesson" })
+    }
+}
+
 export {
     createLesson,
     getLessonsByModule,
     getLessonById,
     updateLesson,
-    toggleLesson
+    toggleLesson,
+    deleteLesson
 }
