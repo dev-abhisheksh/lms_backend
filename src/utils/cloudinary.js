@@ -9,7 +9,7 @@ cloudinary.config({
     api_secret: process.env.CLOUDINARY_API_SECRET
 })
 
-export const uploadToCloudinary = (buffer, folder = "lms_uploads", resourceType = "raw") => {
+export const uploadToCloudinary = (buffer, folder = "lms_uploads", resourceType = "auto") => {
     return new Promise((resolve, reject) => {
         const uploadStream = cloudinary.uploader.upload_stream(
             {
