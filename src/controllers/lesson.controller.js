@@ -3,6 +3,7 @@ import { CourseEnrollment } from "../models/courseEnrollment.model.js"
 import cloudinary, { uploadToCloudinary } from "../utils/cloudinary.js";
 import { Lesson } from "../models/lesson.model.js";
 import { Course } from "../models/course.model.js";
+import { client } from "../utils/redisClient.js";
 
 const createLesson = async (req, res) => {
     try {
@@ -86,6 +87,17 @@ const getLessonsByModule = async (req, res) => {
         const { moduleId } = req.params;
         if (!moduleId) return res.status(400).json({ message: "ModuleID is required" })
 
+        const cacheKey = `lessonsByModule:${moduleId}:${req.user.role}:${req.user._id || "none"}`
+        const cached = await client.get(cacheKey)
+        if (cached) {
+            const parsed = JSON.parse(cached)
+            return res.status(200).json({
+                message: "All lessons fetched successfully",
+                count: parsed.length,
+                lessons: parsed
+            })
+        }
+
         const module = await Module.findById(moduleId)
             .populate({
                 path: "course",
@@ -103,7 +115,7 @@ const getLessonsByModule = async (req, res) => {
             if (lessons.length === 0) return res.status(200).json({
                 message: "No lessons"
             })
-
+            await client.set(cacheKey, JSON.stringify(lessons), "EX", 500)
             return res.status(200).json({
                 message: `All lessons fetched for module: ${module.title}`,
                 count: lessons.length,
@@ -120,7 +132,7 @@ const getLessonsByModule = async (req, res) => {
             if (lessons.length === 0) return res.status(200).json({
                 message: "No lessons"
             })
-
+            await client.set(cacheKey, JSON.stringify(lessons), "EX", 500)
             return res.status(200).json({
                 message: `All lessons fetched for module: ${module.title}`,
                 count: lessons.length,
@@ -141,7 +153,7 @@ const getLessonsByModule = async (req, res) => {
             if (lessons.length === 0) return res.status(200).json({
                 message: "No lessons"
             })
-
+            await client.set(cacheKey, JSON.stringify(lessons), "EX", 500)
             return res.status(200).json({
                 message: `All lessons fetched for module: ${module.title}`,
                 count: lessons.length,
@@ -165,6 +177,7 @@ const getLessonsByModule = async (req, res) => {
             message: "No lessons"
         })
 
+        await client.set(cacheKey, JSON.stringify(lessons), "EX", 500)
         return res.status(200).json({
             message: `All lessons fetched for module: ${module.title}`,
             count: lessons.length,
@@ -395,7 +408,7 @@ const deleteLesson = async (req, res) => {
 
         if (lesson.files?.length > 0) {
             for (const file of lesson.files) {
-                if (file.public_id) await cloudinary.uploader.destroy(file.public_id,{
+                if (file.public_id) await cloudinary.uploader.destroy(file.public_id, {
                     resource_type: file.resource_type || "video"
                 })
             }
