@@ -1,5 +1,5 @@
 import { Department } from "../models/department.model.js";
-
+import { client } from "../utils/redisClient.js";
 
 const createDepartment = async (req, res) => {
     try {
@@ -45,9 +45,27 @@ const getAllDepartments = async (req, res) => {
         if (req.user.role === "student" || req.user.role === "teacher" || req.user.role === "manager") {
             query = { isActive: true }
         }
+
+        const cacheKey = `allDepartments:${req.user.role}`
+        const cached = await client.get(cacheKey)
+        if (cached) {
+            return res.status(200).json({
+                message: "Fetched all departments",
+                departments: JSON.parse(cached)
+            })
+        }
+
         const departments = await Department.find(query).sort({ name: 1 })
 
-        return res.status(200).json({ message: "Fetched all departments", departments })
+        if (!departments.length)
+            return res.status(404).json({ message: "No departments found" });
+
+        await client.set(cacheKey, JSON.stringify(departments), "EX", 1000)
+
+        return res.status(200).json({
+            message: "Fetched all departments",
+            departments
+        })
 
     } catch (error) {
         console.error("Failed to fetch departments", error)
