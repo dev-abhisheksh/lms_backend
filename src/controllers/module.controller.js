@@ -4,6 +4,16 @@ import { Module } from "../models/module.model.js";
 import { Lesson } from "../models/lesson.model.js"
 import { client } from "../utils/redisClient.js";
 
+const delRedisCache = async (client, pattern) => {
+    let cursor = "0";
+    do {
+        const [next, keys] = await client.scan(cursor, "MATCH", pattern, "COUNT", 100)
+        if (keys.length > 0) await client.del(keys)
+        cursor = next;
+    } while (cursor !== "0")
+    console.log("Cleared chahce")
+}
+
 const createModule = async (req, res) => {
     try {
         const { courseId } = req.params;
