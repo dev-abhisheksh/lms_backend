@@ -233,6 +233,9 @@ const updateModule = async (req, res) => {
             )
 
             if (!updatedModule) return res.status(404).json({ message: "Module not found" })
+            const courseId = updatedModule?.course
+            const pattern = `allModules:${courseId}:*`
+            await delRedisCache(client, pattern)
 
             return res.status(200).json({
                 message: "Module updated successfully",
@@ -272,6 +275,9 @@ const updateModule = async (req, res) => {
         )
 
         if (!updatedModule) return res.status(404).json({ message: "Module not found" });
+
+        const pattern = `allModules:${course}:*`
+        await delRedisCache(client, pattern)
 
         return res.status(200).json({
             message: "Module updated successfully",
