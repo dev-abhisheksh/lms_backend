@@ -3,6 +3,7 @@ import { CourseEnrollment } from "../models/courseEnrollment.model.js";
 import { Module } from "../models/module.model.js";
 import { Lesson } from "../models/lesson.model.js"
 import { client } from "../utils/redisClient.js";
+import cloudinary, { uploadToCloudinary } from "../utils/cloudinary.js";
 
 const delRedisCache = async (client, patterns) => {
     const patternArray = Array.isArray(patterns) ? patterns : [patterns]
@@ -56,6 +57,11 @@ const createModule = async (req, res) => {
 
         const pattern = `allModules:${courseId}:*`
         await delRedisCache(client, pattern)
+
+        // await delRedisCache(client, [
+        //     `allModules:${courseId}:*`,
+        //     `module:${moduleId}`
+        // ]);
 
         return res.status(201).json({
             message: "Module created successfully",
@@ -157,6 +163,15 @@ const getModuleById = async (req, res) => {
         const { moduleId } = req.params;
         if (!moduleId) return res.status(400).json({ message: "ModuleID is required" })
 
+        const cacheKey = `moduleById:${moduleId}:${req.user.role}`
+        const cached = await client.get(cacheKey)
+        if (cached) {
+            return res.status(200).json({
+                message: "Module fetched successfully",
+                module: cached
+            })
+        }
+
         const module = await Module.findById(moduleId)
             .populate({
                 path: "course",
@@ -169,6 +184,7 @@ const getModuleById = async (req, res) => {
         const department = module?.course?.department
 
         if (req.user.role === "admin") {
+            await client.set(cacheKey, JSON.stringify(module), "EX", 500)
             return res.status(200).json({
                 message: "Module fetched successfully",
                 module
@@ -179,6 +195,7 @@ const getModuleById = async (req, res) => {
         if (!module.isActive) return res.status(403).json({ message: "Module is deleted" })
 
         if (req.user.role === "manager") {
+            await client.set(cacheKey, JSON.stringify(module), "EX", 500)
             if (!course.isPublished) return res.status(403).json({ message: "Course is not published" })
             return res.status(200).json({
                 message: "Module fetched successfully",
@@ -194,7 +211,7 @@ const getModuleById = async (req, res) => {
                 role: "teacher"
             })
             if (!enrolledTeacher) return res.status(403).json({ message: "You're not assigned to teach this course" })
-
+            await client.set(cacheKey, JSON.stringify(module), "EX", 500)
             return res.status(200).json({
                 message: "Module fetched successfully",
                 module
@@ -209,7 +226,7 @@ const getModuleById = async (req, res) => {
             role: "student"
         })
         if (!enrolledStudent) return res.status(403).json({ message: "You're not enrolled in this course" })
-
+        await client.set(cacheKey, JSON.stringify(module), "EX", 500)
         return res.status(200).json({
             message: "Module fetched successfully",
             module
@@ -331,6 +348,7 @@ const deleteModule = async (req, res) => {
         if (!module) return res.status(404).json({ message: "Module not found" })
 
         const lessons = await Lesson.find({ module: moduleId })
+            .populate("course", "title")
 
         for (const lesson of lessons) {
             if (lesson.files?.length > 0) {
@@ -344,6 +362,10 @@ const deleteModule = async (req, res) => {
         }
 
         await Module.findByIdAndDelete(moduleId)
+
+        const courseID = lessons?.course
+        const patterns = `allModules:${courseID}:*`
+        await delRedisCache(client, patterns)
 
         return res.status(200).json({ message: "Module and all related lessons deleted permanently" })
 
