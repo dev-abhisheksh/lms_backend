@@ -1,6 +1,23 @@
 import { Department } from "../models/department.model.js";
 import { client } from "../utils/redisClient.js";
 
+const delRedisCache = async (client, patterns) => {
+    const patternArray = Array.isArray(patterns) ? patterns : [patterns]
+    let totalDeleted = 0;
+    for (const pattern of patternArray) {
+        let cursor = "0";
+        do {
+            const [next, keys] = await client.scan(cursor, "MATCH", pattern, "COUNT", 100)
+            if (keys.length > 0) {
+                await client.del(...keys)
+                totalDeleted += keys.length
+            }
+            cursor = next;
+        } while (cursor !== "0")
+    }
+    console.log("Cleared chahce")
+}
+
 const createDepartment = async (req, res) => {
     try {
         const { name, code, description, isActive } = req.body;
@@ -28,6 +45,12 @@ const createDepartment = async (req, res) => {
             createdBy: req.user._id,
             code
         })
+
+        await delRedisCache(client, [
+            `allDepartments:*`,
+            `departmentById:*`
+        ])
+
 
         return res.status(201).json({
             message: "Department created successfully",
@@ -78,6 +101,15 @@ const getDepartmentById = async (req, res) => {
         const { departmentId } = req.params;
         if (!departmentId) return res.status(400).json({ message: "DepartmentId is required" })
 
+        const cacheKey = `departmentById:${departmentId}`
+        const cached = await client.get(cacheKey)
+        if (cached) {
+            return res.status(200).json({
+                message: "Fetched department",
+                department: JSON.parse(cached)
+            })
+        }
+
         const department = await Department.findById(departmentId)
         if (!department) return res.status(404).json({ message: "Department not found" })
 
@@ -87,6 +119,8 @@ const getDepartmentById = async (req, res) => {
             req.user.role === "student") &&
             !department.isActive
         ) return res.status(403).json({ message: "Not authorized to view this department" })
+
+        await client.set(cacheKey, JSON.stringify(department), "EX", 1000)
 
         return res.status(200).json({
             message: "Fetched department",
@@ -111,6 +145,12 @@ const toggleDepartment = async (req, res) => {
 
         department.isActive = !department.isActive;
         await department.save();
+
+        const departmentIdStr = departmentId.toString()
+        await delRedisCache(client, [
+            `allDepartments:*`,
+            `departmentById:${departmentIdStr}*`
+        ])
 
         return res.status(200).json({
             message: `Department "${department.name}" is now ${department.isActive ? "active" : "inactive"}.`,
@@ -155,6 +195,12 @@ const updateDepartment = async (req, res) => {
             },
             { new: true }
         )
+
+        const departmentIdStr = departmentId.toString()
+        await delRedisCache(client, [
+            `allDepartments:*`,
+            `departmentById:${departmentIdStr}*`
+        ])
 
         return res.status(200).json({
             message: "Department updated successfully",
