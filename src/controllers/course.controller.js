@@ -341,11 +341,15 @@ const publishCourse = async (req, res) => {
         const course = await Course.findById(courseId)
             .populate("department", "name code isActive")
         if (!course) return res.status(404).json({ message: "Course not found" })
-
+        const courseIdStr = courseId.toString()
         if (req.user.role === "admin") {
             course.isPublished = !course.isPublished
             await course.save()
 
+            await delRedisCache(client, [
+                `courses:*`,
+                `courseById:${courseIdStr}:*`
+            ])
             return res.status(200).json({
                 message: `Course is now ${course.isPublished ? "isPublished" : "unpublished"}`,
                 course
@@ -364,6 +368,12 @@ const publishCourse = async (req, res) => {
             if (!enrolledTeacher) return res.status(403).json({ message: "Your not assigned to teach this course" })
             course.isPublished = !course.isPublished
             await course.save()
+
+            const courseIdStr = courseId.toString()
+            await delRedisCache(client, [
+                `courses:*`,
+                `courseById:${courseIdStr}:*`
+            ])
 
             return res.status(200).json({
                 message: `Course is now ${course.isPublished ? "isPublished" : "unpublished"}`,
