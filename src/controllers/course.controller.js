@@ -5,6 +5,21 @@ import { Module } from "../models/module.model.js";
 import { uploadToCloudinary } from "../utils/cloudinary.js";
 import { client } from "../utils/redisClient.js";
 
+const delRedisCache = async (client, patterns) => {
+    const patternArray = Array.isArray(patterns) ? patterns : [patterns]
+
+    for (const pattern of patternArray) {
+        let cursor = "0";
+        do {
+            const [next, keys] = await client.scan(cursor, "MATCH", pattern, "COUNT", 100)
+            if (keys.length > 0) {
+                await client.del(...keys)
+            }
+            cursor = next
+        } while (cursor !== "0")
+        console.log("Bro cache cleared fron the eam dont u worry")
+    }
+}
 //create COURSE
 const createCourse = async (req, res) => {
     try {
@@ -48,6 +63,11 @@ const createCourse = async (req, res) => {
             thumbnail: thumbnailMeta,
             isPublished: true
         })
+
+        await delRedisCache(client, [
+            `courses:*`,
+            `courseById:*`
+        ])
 
         return res.status(201).json({ message: "Course created successfully", course })
     } catch (error) {

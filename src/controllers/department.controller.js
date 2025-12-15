@@ -3,14 +3,12 @@ import { client } from "../utils/redisClient.js";
 
 const delRedisCache = async (client, patterns) => {
     const patternArray = Array.isArray(patterns) ? patterns : [patterns]
-    let totalDeleted = 0;
     for (const pattern of patternArray) {
         let cursor = "0";
         do {
             const [next, keys] = await client.scan(cursor, "MATCH", pattern, "COUNT", 100)
             if (keys.length > 0) {
                 await client.del(...keys)
-                totalDeleted += keys.length
             }
             cursor = next;
         } while (cursor !== "0")
