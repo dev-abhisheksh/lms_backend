@@ -10,10 +10,11 @@ const router = express.Router();
 router.post("/create/:courseId", verifyJWT, authorizeRoles("admin", "teacher"), rateLimiter({ keyPrefix: "createAssignment", limit: 5, windowSec: 300 }), upload.array("attachments", 5), createAssignment)
 
 router.patch("/update/:assignmentId", verifyJWT, authorizeRoles("admin", "teacher"), rateLimiter({ keyPrefix: "updateAssignment", limit: 5, windowSec: 300 }), upload.array("attachments", 5), updateAssignment)
+
 router.get("/assignments/:courseId", verifyJWT, authorizeRoles("admin", "teacher", "student"), getAssignments)
 router.get("/assignment/:assignmentId", verifyJWT, getAssignmentByID)
 router.patch("/toggle/:assignmentId", verifyJWT, authorizeRoles("admin", "teacher"), togglePublishUnpublishAssignment)
 router.patch("/delete/:assignmentId", verifyJWT, authorizeRoles("admin", "teacher"), deleteAssignment)
-router.get("/summary/:assignmentId", verifyJWT, authorizeRoles("admin", "teacher"), getAssignmentSummary)
+router.get("/summary/:assignmentId", verifyJWT, authorizeRoles("admin", "teacher"), rateLimiter({ keyPrefix: "assignmentSummary", limit: 5, windowSec: 300 }), getAssignmentSummary)
 
 export default router;
