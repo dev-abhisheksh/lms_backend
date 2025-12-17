@@ -6,11 +6,11 @@ import rateLimiter from "../middlewares/rateLimiter.js";
 
 const router = express.Router();
 
-router.post("/create/:departmentId", verifyJWT, authorizeRoles("teacher", "admin"), createCourse)
-router.get("/courses", verifyJWT, rateLimiter({ keyPrefix: "courses", limit: 5, windowSec: 60 }), getAllCourses);
+router.post("/create/:departmentId", verifyJWT, authorizeRoles("teacher", "admin"), rateLimiter({ keyPrefix: "createCourse", limit: 5, windowSec: 60 }), createCourse)
+router.get("/courses", verifyJWT, rateLimiter({ keyPrefix: "courses", limit: 10, windowSec: 60 }), getAllCourses);
 router.get("/my-courses", verifyJWT, getMyCourse)
 router.get("/course/:courseId", verifyJWT, getCourseById)
-router.patch("/update/:courseId", verifyJWT, authorizeRoles("admin", "teacher"), updateCourse)
-router.patch("/publish/:courseId", verifyJWT, authorizeRoles("admin", "teacher"), publishCourse)
+router.patch("/update/:courseId", verifyJWT, authorizeRoles("admin", "teacher"), rateLimiter({ keyPrefix: "updateCourse", limit: 10, windowSec: 300 }), updateCourse)
+router.patch("/publish/:courseId", verifyJWT, authorizeRoles("admin", "teacher"), rateLimiter({ keyPrefix: "toggleCourse", limit: 10, windowSec: 60 }), publishCourse)
 
 export default router;
