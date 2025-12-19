@@ -1,5 +1,5 @@
 import { generateWithGemini } from "../services/ai/gemini.service.js";
-import { enhanceLessonDescriptionPrompt, moduleDescriptionPrompt, reWriteAssignemtQuestionPrompt } from "../services/ai/prompts.js";
+import { enhanceAssignmentDescriptionPrompt, enhanceCourseDescriptionPrompt, enhanceLessonDescriptionPrompt, enhanceModuleDescriptionPrompt, moduleDescriptionPrompt, reWriteAssignemtQuestionPrompt } from "../services/ai/prompts.js";
 
 const generateModuleDescription = async (req, res) => {
     try {
@@ -39,31 +39,57 @@ const reWriteAssignmentQuestion = async (req, res) => {
     })
 }
 
-const enhanceLessonDescription = async (req, res) => {
-    const { description } = req.body
-    if (!description) {
-        return res.status(400).json({ message: "lesson description is required" })
+const enhanceDescription = async (req, res) => {
+    try {
+        const { type, description } = req.body
+        if (!type || !description) return res.status(400).json({ message: "Both fields are required" })
+
+        const text = description.trim()
+
+        if (text.length < 10) {
+            return res.status(400).json({ message: "Description is too short to ehance" })
+        }
+
+        if (text.length > 800) {
+            return res.status(400).json({ message: "Description is too large for AI Enhance" })
+        }
+
+        let prompt;
+
+        switch (type) {
+            case "course":
+                prompt = enhanceCourseDescriptionPrompt({ description: text })
+                break;
+
+            case "module":
+                prompt = enhanceModuleDescriptionPrompt({ description: text })
+                break
+
+            case "assignment":
+                prompt = enhanceAssignmentDescriptionPrompt({ description: text })
+                break
+
+            case "lesson":
+                prompt = enhanceLessonDescriptionPrompt({ description: text })
+                break
+
+            default:
+                return res.status(400).json({ message: "Invalid description type" })
+        }
+
+        const enhaced = await generateWithGemini(prompt)
+
+        res.status(200).json({
+            enhanceDescription: enhaced
+        })
+    } catch (error) {
+        console.error(err.message);
+        res.status(500).json({ message: "AI enhancement failed" });
     }
-
-    if (description.trim().length < 10) {
-        return res.status(400).json({ message: "Lesson description is too short to enhance" })
-    }
-
-    if (description.trim().length > 800) {
-        return res.status(400).json({ message: "Lesson description is too large for AI Enhancement" })
-    }
-
-    const prompt = enhanceLessonDescriptionPrompt({ description })
-
-    const enhanced = await generateWithGemini(prompt)
-
-    res.status(200).json({
-        enhancedDescription: enhanced
-    })
 }
 
 export {
     generateModuleDescription,
     reWriteAssignmentQuestion,
-    enhanceLessonDescription
+    enhanceDescription
 }
