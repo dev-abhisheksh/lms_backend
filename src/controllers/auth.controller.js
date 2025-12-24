@@ -14,7 +14,12 @@ const generateAccessToken = (user) => {
             role: user.role
         },
         process.env.ACCESS_TOKEN_SECRET,
-        { expiresIn: process.env.ACCESS_TOKEN_EXPIRY || "1h" }
+        console.log(
+            "ACCESS_TOKEN_SECRET (verify):",
+            process.env.ACCESS_TOKEN_SECRET
+        ),
+
+    { expiresIn: process.env.ACCESS_TOKEN_EXPIRY || "1h" }
     )
 }
 
