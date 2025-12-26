@@ -116,9 +116,6 @@ This project implements **industry-aligned backend practices** such as role-base
 ├── .env.example
 └── package.json
 
-yaml
-Copy code
-
 ---
 
 ## ⚙️ Environment Variables
