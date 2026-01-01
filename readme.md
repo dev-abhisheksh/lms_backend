@@ -55,9 +55,6 @@ Hierarchical structure enforced at database and API level:
 
 Department → Course → Module → Lesson
 
-yaml
-Copy code
-
 Unauthorized access is blocked even if valid IDs are provided.
 
 ---
@@ -77,7 +74,6 @@ AI is implemented via a **dedicated service layer**, not mixed into controllers.
 
 #### AI Capabilities:
 - Lesson summaries and explanations
-- Context-aware student doubt resolution
 - Prompt isolation per feature (no shared prompt pollution)
 
 AI failures **never block core LMS functionality**.
@@ -155,59 +151,59 @@ These decisions are **intentional**, not accidental.
 
 ## 📁 Project Structure
 
-/src
-├── /controllers
-│ ├── ai.controller.js
-│ ├── assignment.controller.js
-│ ├── auth.controller.js
-│ ├── course.controller.js
-│ ├── courseEnrollment.controller.js
-│ ├── department.controller.js
-│ ├── lesson.controller.js
-│ ├── module.controller.js
-│ └── submission.controller.js
+```text
+src/
+├── controllers/
+│   ├── ai.controller.js
+│   ├── assignment.controller.js
+│   ├── auth.controller.js
+│   ├── course.controller.js
+│   ├── courseEnrollment.controller.js
+│   ├── department.controller.js
+│   ├── lesson.controller.js
+│   ├── module.controller.js
+│   └── submission.controller.js
 │
-├── /middlewares
-│ ├── auth.middleware.js
-│ ├── role.middleware.js
-│ └── rateLimiter.middleware.js
+├── middlewares/
+│   ├── auth.middleware.js
+│   ├── role.middleware.js
+│   └── rateLimiter.middleware.js
 │
-├── /models
-│ ├── aiAuditLog.model.js
-│ ├── assignment.model.js
-│ ├── course.model.js
-│ ├── courseEnrollment.model.js
-│ ├── department.model.js
-│ ├── lesson.model.js
-│ ├── module.model.js
-│ ├── submissions.model.js
-│ └── user.model.js
+├── models/
+│   ├── aiAuditLog.model.js
+│   ├── assignment.model.js
+│   ├── course.model.js
+│   ├── courseEnrollment.model.js
+│   ├── department.model.js
+│   ├── lesson.model.js
+│   ├── module.model.js
+│   ├── submissions.model.js
+│   └── user.model.js
 │
-├── /routes
-│ ├── ai.route.js
-│ ├── assignment.route.js
-│ ├── auth.route.js
-│ ├── course.route.js
-│ ├── courseEnrollment.route.js
-│ ├── department.route.js
-│ ├── lesson.route.js
-│ ├── module.route.js
-│ └── submission.route.js
+├── routes/
+│   ├── ai.route.js
+│   ├── assignment.route.js
+│   ├── auth.route.js
+│   ├── course.route.js
+│   ├── courseEnrollment.route.js
+│   ├── department.route.js
+│   ├── lesson.route.js
+│   ├── module.route.js
+│   └── submission.route.js
 │
-├── /services
-│ └── /ai
-│ ├── gemini.service.js
-│ └── prompts.js
+├── services/
+│   └── ai/
+│       ├── gemini.service.js
+│       └── prompts.js
 │
-├── /utils
-│ ├── cloudinary.js
-│ └── redisClient.js
+├── utils/
+│   ├── cloudinary.js
+│   └── redisClient.js
 │
 ├── app.js
 └── server.js
+```
 
-yaml
-Copy code
 
 ---
 
