@@ -42,9 +42,9 @@ const registerUser = async (req, res) => {
             return res.status(400).json({ message: "All fields are required" });
         }
 
-        if (role === "admin" || role === "manager") {
-            return res.status(403).json({ message: "Cannot assign admin & manager role during registration" })
-        }
+        // if (role === "admin" || role === "manager") {
+        //     return res.status(403).json({ message: "Cannot assign admin & manager role during registration" })
+        // }
 
         const userExists = await User.findOne({ email });
         if (userExists) {

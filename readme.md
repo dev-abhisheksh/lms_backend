@@ -9,7 +9,7 @@
 ![RBAC](https://img.shields.io/badge/RBAC-Admin%20%7C%20Instructor%20%7C%20Student-blue)
 ![AI](https://img.shields.io/badge/AI-Assistive%20Learning-purple)
 
-A **backend-first Learning Management System (LMS)** built with **Node.js, Express, MongoDB, and Redis**, designed to handle **real academic workflows**, **secure access control**, and **AI-assisted content description improvements.**.
+A **backend-first Learning Management System (LMS)** built with **Node.js, Express, MongoDB, and Redis**, designed to handle **real academic workflows**, **secure access control**, and **AI-assisted ontent description improvements.**.
 
 This backend focuses on **correctness, scalability, and production-grade design**, not UI shortcuts.  
 Every major feature is implemented with **middleware-level security, caching discipline, and failure-safe design**.
