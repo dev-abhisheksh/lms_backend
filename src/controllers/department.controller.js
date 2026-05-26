@@ -76,10 +76,9 @@ const getAllDepartments = async (req, res) => {
             })
         }
 
-        const departments = await Department.find(query).sort({ name: 1 })
-
-        if (!departments.length)
-            return res.status(404).json({ message: "No departments found" });
+        const departments = await Department.find(query)
+            .populate("manager", "fullName email username")
+            .sort({ name: 1 })
 
         await client.set(cacheKey, JSON.stringify(departments), "EX", 1000)
 
@@ -210,10 +209,69 @@ const updateDepartment = async (req, res) => {
     }
 }
 
+const assignManager = async (req, res) => {
+    try {
+        const { departmentId } = req.params;
+        const { managerId } = req.body;
+
+        if (!departmentId) return res.status(400).json({ message: "DepartmentId is required" });
+        if (req.user.role !== "admin") return res.status(403).json({ message: "Not authorized" });
+
+        const department = await Department.findById(departmentId);
+        if (!department) return res.status(404).json({ message: "Department not found" });
+
+        const { User } = await import("../models/user.model.js");
+
+        // Un-assign: remove manager
+        if (!managerId) {
+            if (department.manager) {
+                await User.findByIdAndUpdate(department.manager, { $unset: { department: 1 } });
+            }
+            department.manager = null;
+            await department.save();
+            await delRedisCache(client, [`allDepartments:*`, `departmentById:${departmentId}*`]);
+            return res.status(200).json({ message: "Manager removed from department", department });
+        }
+
+        // Validate manager user
+        const managerUser = await User.findById(managerId).select("fullName email role");
+        if (!managerUser) return res.status(404).json({ message: "User not found" });
+        if (managerUser.role !== "manager") {
+            return res.status(400).json({ message: `User is a '${managerUser.role}', not a manager` });
+        }
+
+        // Remove old manager's dept link if different
+        if (department.manager && department.manager.toString() !== managerId) {
+            await User.findByIdAndUpdate(department.manager, { $unset: { department: 1 } });
+        }
+
+        // Assign
+        department.manager = managerId;
+        await department.save();
+
+        // Sync manager user's department field
+        await User.findByIdAndUpdate(managerId, { department: departmentId });
+
+        await delRedisCache(client, [`allDepartments:*`, `departmentById:${departmentId}*`]);
+
+        const populated = await Department.findById(departmentId)
+            .populate("manager", "fullName email username");
+
+        return res.status(200).json({
+            message: `${managerUser.fullName} assigned as manager of ${department.name}`,
+            department: populated
+        });
+    } catch (error) {
+        console.error("Failed to assign manager", error);
+        return res.status(500).json({ message: "Failed to assign manager" });
+    }
+};
+
 export {
     createDepartment,
     getAllDepartments,
     getDepartmentById,
     toggleDepartment,
-    updateDepartment
+    updateDepartment,
+    assignManager
 }
