@@ -90,7 +90,7 @@ const getAllCourses = async (req, res) => {
         const userId = req.user._id
 
         //Seaching if the course data is in the ram
-        const cacheKey = `courses:${role}:${userId || "none"}:${departmentId || "all"}:${search || "none"}:${page}:${limit}`
+        const cacheKey = `courses:${role}:${userId || "none"}:${departmentId || "all"}:${year || "all"}:${search || "none"}:${page}:${limit}`
         //courses:admin:none(no specific userId do all admins can access):all(all only for admin):none:1:20
 
         const cacheCourses = await client.get(cacheKey)
