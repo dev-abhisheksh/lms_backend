@@ -38,6 +38,12 @@ const userSchema = new mongoose.Schema({
         enum: ["FY", "SY", "TY", null],
         default: null
     },
+    cohortYear: {
+        type: Number,
+        default: null,
+        index: true,
+        comment: "Admission year for batch tracking (e.g., 2016)"
+    },
     isActive: {
         type: Boolean,
         default: true

@@ -37,14 +37,10 @@ const generateRefreshToken = (user) => {
 
 const registerUser = async (req, res) => {
     try {
-        const { fullName, username, email, password, role, department, year } = req.body;
+        const { fullName, username, email, password, role, department, year, cohortYear } = req.body;
         if (!fullName || !username || !email || !password) {
             return res.status(400).json({ message: "All fields are required" });
         }
-
-        // if (role === "admin" || role === "manager") {
-        //     return res.status(403).json({ message: "Cannot assign admin & manager role during registration" })
-        // }
 
         const userExists = await User.findOne({ email });
         if (userExists) {
@@ -67,6 +63,16 @@ const registerUser = async (req, res) => {
             return res.status(400).json({ message: "Year must be FY, SY, or TY" });
         }
 
+        // Validate cohortYear if provided
+        let cohortYearValue = null;
+        if (role === "student" && cohortYear) {
+            const parsedYear = parseInt(cohortYear, 10);
+            if (isNaN(parsedYear) || parsedYear < 1900 || parsedYear > 2100) {
+                return res.status(400).json({ message: "Invalid cohortYear (admission year)" });
+            }
+            cohortYearValue = parsedYear;
+        }
+
         const hashedPassword = await bcrypt.hash(password, 10);
 
         const createUser = await User.create({
@@ -76,7 +82,8 @@ const registerUser = async (req, res) => {
             password: hashedPassword,
             role,
             ...(departmentId && { department: departmentId }),
-            ...(year && { year })
+            ...(year && { year }),
+            ...(cohortYearValue && { cohortYear: cohortYearValue })
         });
 
         const user = createUser.toObject();
@@ -224,20 +231,22 @@ const getBatches = async (req, res) => {
             return res.status(403).json({ message: "Not authorized to view batches" })
         }
 
-        // Get all unique batches (department + year combinations) with student counts
+        // Get all unique batches (department + year + cohortYear) with student counts
         const batches = await User.aggregate([
             {
                 $match: {
                     role: "student",
                     department: { $ne: null },
-                    year: { $ne: null }
+                    year: { $ne: null },
+                    cohortYear: { $ne: null }
                 }
             },
             {
                 $group: {
                     _id: {
                         department: "$department",
-                        year: "$year"
+                        year: "$year",
+                        cohortYear: "$cohortYear"
                     },
                     studentCount: { $sum: 1 },
                     students: { $push: "$_id" }
@@ -257,6 +266,7 @@ const getBatches = async (req, res) => {
             {
                 $sort: {
                     "departmentInfo.name": 1,
+                    "_id.cohortYear": 1,
                     "_id.year": 1
                 }
             }
@@ -271,6 +281,7 @@ const getBatches = async (req, res) => {
                     code: batch.departmentInfo.code
                 },
                 year: batch._id.year,
+                cohortYear: batch._id.cohortYear,
                 studentCount: batch.studentCount,
                 studentIds: batch.students
             }))
