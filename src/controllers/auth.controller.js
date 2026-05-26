@@ -140,9 +140,60 @@ const getCurrentUser = async (req, res) => {
     }
 }
 
+const getAllUsers = async (req, res) => {
+    try {
+        // Only admins can view all users
+        if (req.user.role !== "admin") {
+            return res.status(403).json({ message: "Not authorized to view all users" })
+        }
+
+        const { search, role, page = 1, limit = 20 } = req.query;
+
+        const query = {};
+        
+        if (role) {
+            query.role = role;
+        }
+
+        if (search && search.trim()) {
+            const re = new RegExp(search.trim(), "i");
+            query.$or = [
+                { fullName: re },
+                { email: re },
+                { username: re }
+            ];
+        }
+
+        const skip = (Math.max(1, Number(page)) - 1) * Math.min(100, Number(limit));
+        
+        const users = await User.find(query)
+            .select("_id fullName username email role isActive createdAt")
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(Math.min(100, Number(limit)));
+
+        const totalUsers = await User.countDocuments(query);
+
+        return res.status(200).json({
+            message: "Users fetched successfully",
+            meta: {
+                page: Number(page),
+                limit: Number(limit),
+                total: totalUsers,
+                pages: Math.ceil(totalUsers / Math.min(100, Number(limit)))
+            },
+            users
+        });
+    } catch (error) {
+        console.error("Failed to fetch users:", error);
+        return res.status(500).json({ message: "Failed to fetch users" });
+    }
+}
+
 export {
     registerUser,
     loginUser,
     logoutUser,
-    getCurrentUser
+    getCurrentUser,
+    getAllUsers
 }
