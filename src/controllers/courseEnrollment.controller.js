@@ -9,15 +9,22 @@ const assignUserToCourse = async (req, res) => {
         if (!courseId || !userId || !role) return res.status(400).json({ message: "CourseID, UserID and role are required" })
 
         //checking of Course and User exisits in the DATABASE
-        const course = await Course.findById(courseId).select("title description department")
+        const course = await Course.findById(courseId).select("title description department year")
         if (!course) return res.status(404).json({ message: "Course not found" })
 
-        const user = await User.findById(userId).select("fullName username email role")
+        const user = await User.findById(userId).select("fullName username email role year department")
         if (!user) return res.status(404).json({ message: "User not found" })
 
         //only admins and managers are allowed
         if (req.user.role !== "admin" && req.user.role !== "manager") {
             return res.status(403).json({ message: "Not authorized to Assign users to course" })
+        }
+
+        // Year validation - student's year must match course year
+        if (role === "student" && user.year && course.year && user.year !== course.year) {
+            return res.status(400).json({ 
+                message: `Cannot enroll student in course. Student is in '${user.year}' but course is for '${course.year}' students`
+            })
         }
 
         //only students and teachers can be enrolled

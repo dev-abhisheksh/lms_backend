@@ -217,10 +217,116 @@ const getAllUsers = async (req, res) => {
     }
 }
 
+const getBatches = async (req, res) => {
+    try {
+        // Only admins can view batches
+        if (req.user.role !== "admin") {
+            return res.status(403).json({ message: "Not authorized to view batches" })
+        }
+
+        // Get all unique batches (department + year combinations) with student counts
+        const batches = await User.aggregate([
+            {
+                $match: {
+                    role: "student",
+                    department: { $ne: null },
+                    year: { $ne: null }
+                }
+            },
+            {
+                $group: {
+                    _id: {
+                        department: "$department",
+                        year: "$year"
+                    },
+                    studentCount: { $sum: 1 },
+                    students: { $push: "$_id" }
+                }
+            },
+            {
+                $lookup: {
+                    from: "departments",
+                    localField: "_id.department",
+                    foreignField: "_id",
+                    as: "departmentInfo"
+                }
+            },
+            {
+                $unwind: "$departmentInfo"
+            },
+            {
+                $sort: {
+                    "departmentInfo.name": 1,
+                    "_id.year": 1
+                }
+            }
+        ]);
+
+        return res.status(200).json({
+            message: "Batches fetched successfully",
+            batches: batches.map(batch => ({
+                department: {
+                    _id: batch._id.department,
+                    name: batch.departmentInfo.name,
+                    code: batch.departmentInfo.code
+                },
+                year: batch._id.year,
+                studentCount: batch.studentCount,
+                studentIds: batch.students
+            }))
+        });
+    } catch (error) {
+        console.error("Failed to fetch batches:", error);
+        return res.status(500).json({ message: "Failed to fetch batches" });
+    }
+}
+
+const updateBatchYear = async (req, res) => {
+    try {
+        // Only admins can update batches
+        if (req.user.role !== "admin") {
+            return res.status(403).json({ message: "Not authorized to update batches" })
+        }
+
+        const { departmentId, currentYear, newYear } = req.body;
+
+        if (!departmentId || !currentYear || !newYear) {
+            return res.status(400).json({ message: "departmentId, currentYear, and newYear are required" })
+        }
+
+        const validYears = ["FY", "SY", "TY"];
+        if (!validYears.includes(currentYear) || !validYears.includes(newYear)) {
+            return res.status(400).json({ message: "Invalid year. Must be FY, SY, or TY" })
+        }
+
+        // Update all students in the batch
+        const result = await User.updateMany(
+            {
+                role: "student",
+                department: departmentId,
+                year: currentYear
+            },
+            {
+                year: newYear
+            }
+        );
+
+        return res.status(200).json({
+            message: `${result.modifiedCount} students updated from ${currentYear} to ${newYear}`,
+            modifiedCount: result.modifiedCount
+        });
+    } catch (error) {
+        console.error("Failed to update batch year:", error);
+        return res.status(500).json({ message: "Failed to update batch year" });
+    }
+}
+
 export {
     registerUser,
     loginUser,
     logoutUser,
     getCurrentUser,
-    getAllUsers
+    getAllUsers,
+    getBatches,
+    updateBatchYear
 }
