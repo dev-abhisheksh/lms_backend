@@ -37,7 +37,7 @@ const generateRefreshToken = (user) => {
 
 const registerUser = async (req, res) => {
     try {
-        const { fullName, username, email, password, role } = req.body;
+        const { fullName, username, email, password, role, department, year } = req.body;
         if (!fullName || !username || !email || !password) {
             return res.status(400).json({ message: "All fields are required" });
         }
@@ -51,6 +51,22 @@ const registerUser = async (req, res) => {
             return res.status(409).json({ message: "User already exists. Please login" })
         }
 
+        // Validate department if provided
+        let departmentId = null;
+        if (department) {
+            const { Department } = await import("../models/department.model.js");
+            const deptExists = await Department.findById(department);
+            if (!deptExists) {
+                return res.status(404).json({ message: "Department not found" });
+            }
+            departmentId = department;
+        }
+
+        // Validate year if student
+        if (role === "student" && year && !["FY", "SY", "TY"].includes(year)) {
+            return res.status(400).json({ message: "Year must be FY, SY, or TY" });
+        }
+
         const hashedPassword = await bcrypt.hash(password, 10);
 
         const createUser = await User.create({
@@ -58,7 +74,9 @@ const registerUser = async (req, res) => {
             username: username.trim().toLowerCase(),
             email: email.trim().toLowerCase(),
             password: hashedPassword,
-            role
+            role,
+            ...(departmentId && { department: departmentId }),
+            ...(year && { year })
         });
 
         const user = createUser.toObject();
@@ -147,12 +165,20 @@ const getAllUsers = async (req, res) => {
             return res.status(403).json({ message: "Not authorized to view all users" })
         }
 
-        const { search, role, page = 1, limit = 20 } = req.query;
+        const { search, role, department, year, page = 1, limit = 20 } = req.query;
 
         const query = {};
         
         if (role) {
             query.role = role;
+        }
+
+        if (department) {
+            query.department = department;
+        }
+
+        if (year) {
+            query.year = year;
         }
 
         if (search && search.trim()) {
@@ -167,7 +193,8 @@ const getAllUsers = async (req, res) => {
         const skip = (Math.max(1, Number(page)) - 1) * Math.min(100, Number(limit));
         
         const users = await User.find(query)
-            .select("_id fullName username email role isActive createdAt")
+            .select("_id fullName username email role department year isActive createdAt")
+            .populate("department", "name code")
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(Math.min(100, Number(limit)));

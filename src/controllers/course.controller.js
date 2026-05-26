@@ -23,8 +23,13 @@ const delRedisCache = async (client, patterns) => {
 const createCourse = async (req, res) => {
     try {
         const { departmentId } = req.params
-        const { title, description, courseCode, thumbnail } = req.body;
-        if (!title || !description || !courseCode || !departmentId) return res.status(400).json({ message: "Title, courseCode & description fields are required" })
+        const { title, description, courseCode, year, thumbnail } = req.body;
+        if (!title || !description || !courseCode || !departmentId || !year) return res.status(400).json({ message: "Title, courseCode, year & description fields are required" })
+
+        //Validate year
+        if (!["FY", "SY", "TY"].includes(year)) {
+            return res.status(400).json({ message: "Year must be FY, SY, or TY" })
+        }
 
         //role check
         if (req.user.role !== "admin") return res.status(403).json({ message: "Not authorized!" })
@@ -58,6 +63,7 @@ const createCourse = async (req, res) => {
             description: description.trim(),
             courseCode: courseCode.trim(),
             department: existingDepartment._id,
+            year,
             createdBy: req.user._id,
             thumbnail: thumbnailMeta,
             isPublished: true

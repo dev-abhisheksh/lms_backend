@@ -21,6 +21,12 @@ const courseSchema = new mongoose.Schema({
         ref: "Department",
         required: true
     },
+    year: {
+        type: String,
+        enum: ["FY", "SY", "TY"],
+        required: true,
+        comment: "Which year this course is for"
+    },
     thumbnail: String,
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
@@ -37,6 +43,6 @@ const courseSchema = new mongoose.Schema({
     }
 }, { timestamps: true })
 
-courseSchema.index({ department: 1 })
+courseSchema.index({ department: 1, year: 1 })
 
 export const Course = mongoose.model("Course", courseSchema)

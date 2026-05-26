@@ -28,6 +28,16 @@ const userSchema = new mongoose.Schema({
         enum: ["manager", "admin", "teacher", "student"],
         default: "student"
     },
+    department: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Department",
+        default: null
+    },
+    year: {
+        type: String,
+        enum: ["FY", "SY", "TY", null],
+        default: null
+    },
     isActive: {
         type: Boolean,
         default: true
@@ -43,6 +53,6 @@ const userSchema = new mongoose.Schema({
 
 // userSchema.index({ email: 1 }, { unique: true });
 // userSchema.index({ username: 1 }, { unique: true });
-
+userSchema.index({ department: 1, year: 1 })
 
 export const User = mongoose.model("User", userSchema)
