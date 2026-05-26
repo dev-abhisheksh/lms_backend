@@ -84,7 +84,7 @@ const createCourse = async (req, res) => {
 //get ALL COURSES
 const getAllCourses = async (req, res) => {
     try {
-        const { departmentId } = req.query;
+        const { departmentId, year } = req.query;
         const { search, page = 1, limit = 20 } = req.query;
         const role = req.user.role;
         const userId = req.user._id
@@ -110,6 +110,7 @@ const getAllCourses = async (req, res) => {
 
         const query = {};
         if (departmentId) query.department = departmentId;
+        if (year && ["FY", "SY", "TY"].includes(year)) query.year = year;
 
         if (req.user.role !== "admin") {
             const activeDepartments = await Department.find({ isActive: true }).select("_id");

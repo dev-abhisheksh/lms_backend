@@ -284,6 +284,83 @@ const getCourseEnrollmentsSummary = async (req, res) => {
     }
 };
 
+const batchEnrollCourse = async (req, res) => {
+    try {
+        if (req.user.role !== "admin" && req.user.role !== "manager") {
+            return res.status(403).json({ message: "Not authorized" });
+        }
+
+        const { courseIds, departmentId, cohortYear } = req.body;
+
+        if (!courseIds?.length || !departmentId || !cohortYear) {
+            return res.status(400).json({ message: "courseIds, departmentId, and cohortYear are required" });
+        }
+
+        // Find all students in this batch
+        const students = await User.find({
+            role: "student",
+            department: departmentId,
+            cohortYear: Number(cohortYear)
+        }).select("_id year");
+
+        if (students.length === 0) {
+            return res.status(404).json({ message: "No students found in this batch" });
+        }
+
+        // Validate and enroll each course
+        const results = [];
+
+        for (const courseId of courseIds) {
+            const course = await Course.findById(courseId).select("title year department");
+            if (!course) {
+                results.push({ courseId, status: "skipped", reason: "Course not found" });
+                continue;
+            }
+
+            // Only enroll students whose current year matches the course year
+            const eligibleStudents = students.filter(s => s.year === course.year);
+
+            if (eligibleStudents.length === 0) {
+                results.push({
+                    courseId,
+                    courseTitle: course.title,
+                    status: "skipped",
+                    reason: `No students currently in ${course.year} (course is for ${course.year})`
+                });
+                continue;
+            }
+
+            let enrolled = 0;
+            let skipped = 0;
+
+            for (const student of eligibleStudents) {
+                const exists = await CourseEnrollment.findOne({ user: student._id, course: courseId });
+                if (exists) { skipped++; continue; }
+
+                await CourseEnrollment.create({ user: student._id, course: courseId, role: "student" });
+                enrolled++;
+            }
+
+            results.push({
+                courseId,
+                courseTitle: course.title,
+                status: "done",
+                enrolled,
+                skipped
+            });
+        }
+
+        return res.status(200).json({
+            message: "Batch enrollment complete",
+            batchSize: students.length,
+            results
+        });
+    } catch (error) {
+        console.error("Failed batch enrollment:", error);
+        return res.status(500).json({ message: "Failed to batch enroll" });
+    }
+};
+
 
 
 export {
@@ -291,5 +368,6 @@ export {
     getMyEnrollments,
     removeUserFromCourse,
     getCourseEnrollmentsSummary,
-    getAllEnrollmentsForCourse
+    getAllEnrollmentsForCourse,
+    batchEnrollCourse
 }

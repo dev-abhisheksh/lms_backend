@@ -266,7 +266,7 @@ const getBatches = async (req, res) => {
             {
                 $sort: {
                     "departmentInfo.name": 1,
-                    "_id.cohortYear": 1,
+                    "_id.cohortYear": -1,
                     "_id.year": 1
                 }
             }
@@ -299,10 +299,10 @@ const updateBatchYear = async (req, res) => {
             return res.status(403).json({ message: "Not authorized to update batches" })
         }
 
-        const { departmentId, currentYear, newYear } = req.body;
+        const { departmentId, cohortYear, currentYear, newYear } = req.body;
 
-        if (!departmentId || !currentYear || !newYear) {
-            return res.status(400).json({ message: "departmentId, currentYear, and newYear are required" })
+        if (!departmentId || !cohortYear || !currentYear || !newYear) {
+            return res.status(400).json({ message: "departmentId, cohortYear, currentYear, and newYear are required" })
         }
 
         const validYears = ["FY", "SY", "TY"];
@@ -310,21 +310,56 @@ const updateBatchYear = async (req, res) => {
             return res.status(400).json({ message: "Invalid year. Must be FY, SY, or TY" })
         }
 
-        // Update all students in the batch
+        // ── Step 1: Find all students in this specific batch ─────────────────
+        const batchStudents = await User.find({
+            role: "student",
+            department: departmentId,
+            cohortYear: Number(cohortYear),
+            year: currentYear
+        }).select("_id");
+
+        if (batchStudents.length === 0) {
+            return res.status(404).json({ message: "No students found in this batch" });
+        }
+
+        const studentIds = batchStudents.map(s => s._id);
+
+        // ── Step 2: Remove enrollments for the OLD year's courses ─────────────
+        // Find all courses for this department + old year
+        const { Course } = await import("../models/course.model.js");
+        const { CourseEnrollment } = await import("../models/courseEnrollment.model.js");
+
+        const oldYearCourses = await Course.find({
+            department: departmentId,
+            year: currentYear
+        }).select("_id");
+
+        const oldCourseIds = oldYearCourses.map(c => c._id);
+
+        let removedEnrollments = 0;
+        if (oldCourseIds.length > 0) {
+            const deleteResult = await CourseEnrollment.deleteMany({
+                user: { $in: studentIds },
+                course: { $in: oldCourseIds }
+            });
+            removedEnrollments = deleteResult.deletedCount;
+        }
+
+        // ── Step 3: Promote the batch to the new year ─────────────────────────
         const result = await User.updateMany(
             {
                 role: "student",
                 department: departmentId,
+                cohortYear: Number(cohortYear),
                 year: currentYear
             },
-            {
-                year: newYear
-            }
+            { year: newYear }
         );
 
         return res.status(200).json({
-            message: `${result.modifiedCount} students updated from ${currentYear} to ${newYear}`,
-            modifiedCount: result.modifiedCount
+            message: `${result.modifiedCount} students promoted from ${currentYear} to ${newYear}. ${removedEnrollments} old course enrollments removed.`,
+            modifiedCount: result.modifiedCount,
+            removedEnrollments
         });
     } catch (error) {
         console.error("Failed to update batch year:", error);
