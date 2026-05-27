@@ -10,6 +10,7 @@ import departmentRouter from "./routes/department.route.js"
 import moduleRouter from "./routes/module.route.js"
 import lessonRouter from "./routes/lesson.route.js"
 import testRouter from "./routes/test.route.js"
+import noteRouter from "./routes/note.route.js"
 import aiRouter from "./routes/ai.route.js"
 
 dotenv.config();
@@ -43,6 +44,7 @@ app.use("/api/v1/departments", departmentRouter)
 app.use("/api/v1/modules", moduleRouter)
 app.use("/api/v1/lessons", lessonRouter)
 app.use("/api/v1/tests", testRouter)
+app.use("/api/v1/notes", noteRouter)
 app.use("/api/v1/ai", aiRouter)
 
 export default app;
