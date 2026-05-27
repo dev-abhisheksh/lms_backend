@@ -296,12 +296,12 @@ const batchEnrollCourse = async (req, res) => {
             return res.status(400).json({ message: "courseIds, departmentId, and cohortYear are required" });
         }
 
-        // Find all students in this batch
+        // Find all users in this batch (any current role). We'll auto-assign `student` role
+        // for eligible users that are not admins/managers/teachers.
         const students = await User.find({
-            role: "student",
             department: departmentId,
             cohortYear: Number(cohortYear)
-        }).select("_id year");
+        }).select("_id year role");
 
         if (students.length === 0) {
             return res.status(404).json({ message: "No students found in this batch" });
@@ -317,8 +317,10 @@ const batchEnrollCourse = async (req, res) => {
                 continue;
             }
 
-            // Only enroll students whose current year matches the course year
-            const eligibleStudents = students.filter(s => s.year === course.year);
+            // Only consider users whose current year matches the course year and who are
+            // not admin/manager/teacher. We'll auto-set their global role to 'student'
+            // if they aren't already 'student'.
+            const eligibleStudents = students.filter(s => s.year === course.year && !["admin", "manager", "teacher"].includes(s.role));
 
             if (eligibleStudents.length === 0) {
                 results.push({
@@ -336,6 +338,11 @@ const batchEnrollCourse = async (req, res) => {
             for (const student of eligibleStudents) {
                 const exists = await CourseEnrollment.findOne({ user: student._id, course: courseId });
                 if (exists) { skipped++; continue; }
+
+                // Ensure user's global role is 'student' unless they are a privileged role
+                if (student.role !== "student") {
+                    await User.findByIdAndUpdate(student._id, { role: "student" });
+                }
 
                 await CourseEnrollment.create({ user: student._id, course: courseId, role: "student" });
                 enrolled++;

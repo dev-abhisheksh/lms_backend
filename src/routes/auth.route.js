@@ -1,6 +1,6 @@
 import express from "express"
 import verifyJWT from "../middlewares/auth.midleware.js";
-import { getCurrentUser, loginUser, logoutUser, registerUser, getAllUsers, getBatches, updateBatchYear, updateUserRole } from "../controllers/auth.controller.js";
+import { getCurrentUser, loginUser, logoutUser, registerUser, getAllUsers, getBatches, updateBatchYear, updateUserRole, getUserById } from "../controllers/auth.controller.js";
 import authorizeRoles from "../middlewares/role.middleware.js";
 import rateLimiter from "../middlewares/rateLimiter.js";
 
@@ -15,5 +15,6 @@ router.get("/all-users", verifyJWT, authorizeRoles("admin"), rateLimiter({ keyPr
 router.get("/batches", verifyJWT, authorizeRoles("admin"), rateLimiter({ keyPrefix: "batches", limit: 20, windowSec: 60 }), getBatches)
 router.patch("/batches/update-year", verifyJWT, authorizeRoles("admin"), rateLimiter({ keyPrefix: "updateBatch", limit: 10, windowSec: 60 }), updateBatchYear)
 router.patch("/update-role/:userId", verifyJWT, authorizeRoles("admin"), rateLimiter({ keyPrefix: "updateUserRole", limit: 10, windowSec: 60 }), updateUserRole)
+router.get("/user/:userId", verifyJWT, authorizeRoles("admin","manager"), rateLimiter({ keyPrefix: "getUserById", limit: 20, windowSec: 60 }), getUserById)
 
 export default router;

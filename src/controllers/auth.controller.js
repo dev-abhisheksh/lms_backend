@@ -224,6 +224,42 @@ const getAllUsers = async (req, res) => {
     }
 }
 
+const getUserById = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        if (!userId) return res.status(400).json({ message: "userId is required" });
+
+        // Only admins and managers may fetch user details for assignment contexts
+        if (req.user.role !== "admin" && req.user.role !== "manager") {
+            return res.status(403).json({ message: "Not authorized to view user details" });
+        }
+
+        const user = await User.findById(userId)
+            .select("_id fullName username email role department year")
+            .populate("department", "name code");
+
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        // Fetch courses where the user is a teacher
+        const { CourseEnrollment } = await import("../models/courseEnrollment.model.js");
+        const teacherEnrollments = await CourseEnrollment.find({ user: userId, role: "teacher" })
+            .populate("course", "title courseCode")
+            .lean();
+
+        const managedCourses = teacherEnrollments.map(te => ({
+            _id: te.course._id,
+            title: te.course.title,
+            courseCode: te.course.courseCode,
+            enrolledAt: te.enrolledAt
+        }));
+
+        return res.status(200).json({ message: "User fetched", user, managedCourses });
+    } catch (error) {
+        console.error("Failed to fetch user by id:", error);
+        return res.status(500).json({ message: "Failed to fetch user by id" });
+    }
+}
+
 const getBatches = async (req, res) => {
     try {
         // Only admins can view batches
@@ -420,5 +456,6 @@ export {
     getAllUsers,
     getBatches,
     updateBatchYear,
-    updateUserRole
+    updateUserRole,
+    getUserById
 }
