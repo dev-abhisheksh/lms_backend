@@ -292,6 +292,51 @@ const getBatches = async (req, res) => {
     }
 }
 
+const updateUserRole = async (req, res) => {
+    try {
+        if (req.user.role !== "admin") {
+            return res.status(403).json({ message: "Not authorized to update user roles" });
+        }
+
+        const { userId } = req.params;
+        const { role } = req.body;
+
+        if (!userId || !role) {
+            return res.status(400).json({ message: "userId and role are required" });
+        }
+
+        const allowedRoles = ["student", "ta", "teacher", "manager", "admin"];
+        const newRole = role.toLowerCase();
+        if (!allowedRoles.includes(newRole)) {
+            return res.status(400).json({ message: "Invalid role" });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        const currentRole = (user.role || "").toLowerCase();
+        const currentIndex = allowedRoles.indexOf(currentRole);
+        const newIndex = allowedRoles.indexOf(newRole);
+
+        // Prevent role demotion: disallow changing to a role with lower privilege index
+        if (newIndex < currentIndex) {
+            return res.status(400).json({ message: "Role downgrade is not allowed" });
+        }
+
+        // Apply role change
+        user.role = newRole;
+        await user.save();
+
+        const safeUser = user.toObject();
+        delete safeUser.password;
+
+        return res.status(200).json({ message: "Role updated", user: safeUser });
+    } catch (error) {
+        console.error("Failed to update user role:", error);
+        return res.status(500).json({ message: "Failed to update role" });
+    }
+}
+
 const updateBatchYear = async (req, res) => {
     try {
         // Only admins can update batches
@@ -374,5 +419,6 @@ export {
     getCurrentUser,
     getAllUsers,
     getBatches,
-    updateBatchYear
+    updateBatchYear,
+    updateUserRole
 }
