@@ -84,13 +84,13 @@ const createCourse = async (req, res) => {
 //get ALL COURSES
 const getAllCourses = async (req, res) => {
     try {
-        const { departmentId, year } = req.query;
+        const { departmentId, year, isPublished } = req.query;
         const { search, page = 1, limit = 20 } = req.query;
         const role = req.user.role;
         const userId = req.user._id
 
         //Seaching if the course data is in the ram
-        const cacheKey = `courses:${role}:${userId || "none"}:${departmentId || "all"}:${year || "all"}:${search || "none"}:${page}:${limit}`
+        const cacheKey = `courses:${role}:${userId || "none"}:${departmentId || "all"}:${year || "all"}:${isPublished ?? "any"}:${search || "none"}:${page}:${limit}`
         //courses:admin:none(no specific userId do all admins can access):all(all only for admin):none:1:20
 
         const cacheCourses = await client.get(cacheKey)
@@ -111,6 +111,8 @@ const getAllCourses = async (req, res) => {
         const query = {};
         if (departmentId) query.department = departmentId;
         if (year && ["FY", "SY", "TY"].includes(year)) query.year = year;
+        // Respect explicit isPublished filter for ALL roles (e.g. Enrollments page sends true)
+        if (isPublished !== undefined) query.isPublished = isPublished === "true";
 
         if (req.user.role !== "admin") {
             const activeDepartments = await Department.find({ isActive: true }).select("_id");
