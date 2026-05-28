@@ -87,6 +87,22 @@ const createAssignment = async (req, res) => {
 
         await assignment.populate("createdBy", "fullName email");
 
+        // ✅ NEW: Emit real-time event to all students in the course via Socket.IO
+        if (global.io) {
+            global.io.to(`course-${courseId}`).emit("assignment:created", {
+                _id: assignment._id,
+                title: assignment.title,
+                description: assignment.description,
+                dueDate: assignment.dueDate,
+                maxMarks: assignment.maxMarks,
+                course: assignment.course,
+                createdBy: assignment.createdBy,
+                createdAt: assignment.createdAt,
+                attachments: assignment.attachments
+            });
+            console.log(`📢 Assignment broadcast to course-${courseId}`);
+        }
+
         return res.status(201).json({
             message: "Assignment created successfully",
             assignment
