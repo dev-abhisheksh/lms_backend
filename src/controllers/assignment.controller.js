@@ -87,6 +87,12 @@ const createAssignment = async (req, res) => {
 
         await assignment.populate("createdBy", "fullName email");
 
+        // Invalidate student assignment caches for all students enrolled in this course
+        const enrolledStudents = await CourseEnrollment.find({ course: courseId, role: "student" }).select("user");
+        for (const enrollment of enrolledStudents) {
+            await client.del(`studentAssignments:${enrollment.user}`);
+        }
+
         // ✅ NEW: Emit real-time event to all students in the course via Socket.IO
         if (global.io) {
             global.io.to(`course-${courseId}`).emit("assignment:created", {
@@ -147,7 +153,7 @@ const updateAssignment = async (req, res) => {
         const updateDate = {};
 
         if (title) updateDate.title = title.trim();
-        if (description) updateDate.description = description.trim() || ""
+        if (description !== undefined) updateDate.description = description?.trim() || ""
 
         if (dueDate) {
             const newDue = new Date(dueDate)
@@ -162,9 +168,14 @@ const updateAssignment = async (req, res) => {
             updateDate.maxMarks = maxMarks
         }
 
-        let attachments = {};
+        // Handle allowLate toggle
+        if (req.body.allowLate !== undefined) {
+            updateDate.allowLate = req.body.allowLate === "true" || req.body.allowLate === true;
+        }
+
+        // Only update attachments if new files are uploaded
         if (req.files?.length > 0) {
-            attachments = await Promise.all(
+            const attachments = await Promise.all(
                 req.files.map(async (file) => {
                     const uploaded = await uploadToCloudinary(file.buffer, "assignment_attachments");
                     return {
@@ -177,8 +188,8 @@ const updateAssignment = async (req, res) => {
                     }
                 })
             )
+            updateDate.attachments = attachments;
         }
-        updateDate.attachments = attachments
 
         const updatedAssignment = await Assignment.findByIdAndUpdate(
             assignmentId,
@@ -201,16 +212,16 @@ const getAssignments = async (req, res) => {
         const { courseId } = req.params;
         if (!courseId) return res.status(400).json({ message: "CourseID is required" })
 
-        const cacheKey = `allAssignments:${req.user.role}:${req.user._id || "none"}`
-        const cached = await client.get(cacheKey)
-        if (cached) {
-            const parsed = JSON.parse(cached)
-            return res.status(200).json({
-                message: "Fetched all the assignments of a course",
-                count: parsed.length,
-                assignments: parsed
-            })
-        }
+        // const cacheKey = `allAssignments:${req.user.role}:${req.user._id || "none"}`
+        // const cached = await client.get(cacheKey)
+        // if (cached) {
+        //     const parsed = JSON.parse(cached)
+        //     return res.status(200).json({
+        //         message: "Fetched all the assignments of a course",
+        //         count: parsed.length,
+        //         assignments: parsed
+        //     })
+        // }
 
         const course = await Course.findById(courseId)
             .populate("department", "name code isActive")
@@ -225,12 +236,12 @@ const getAssignments = async (req, res) => {
             return res.status(200).json({
                 message: "No active assignments found",
                 count: 0,
-                assignments: 0
+                assignments: []
             })
         }
 
         if (req.user.role === "admin") {
-            await client.set(cacheKey, JSON.stringify(assignments), "EX", 300)
+            // await client.set(cacheKey, JSON.stringify(assignments), "EX", 300)
             return res.status(200).json({
                 message: "Fetched all assignments",
                 count: assignments.length,
@@ -249,7 +260,7 @@ const getAssignments = async (req, res) => {
             })
 
             if (!teacherEnrollment) return res.status(403).json({ message: "You're not assigned to teach this course" })
-            await client.set(cacheKey, JSON.stringify(assignments), "EX", 300)
+            // await client.set(cacheKey, JSON.stringify(assignments), "EX", 300)
             return res.status(200).json({
                 message: "Fetched all assignments",
                 count: assignments.length,
@@ -267,7 +278,7 @@ const getAssignments = async (req, res) => {
         if (!studentEnrollment) return res.status(403).json({ message: "You're not enrolled in this course" })
         assignments = assignments.filter(a => a.isPublished)
 
-        await client.set(cacheKey, JSON.stringify(assignments), "EX", 300)
+        // await client.set(cacheKey, JSON.stringify(assignments), "EX", 300)
 
         return res.status(200).json({
             message: "Fetched all assignments",
@@ -404,6 +415,12 @@ const togglePublishUnpublishAssignment = async (req, res) => {
             assignment.publishedAt = newPublished ? new Date() : null;
             await assignment.save();
 
+            // Invalidate student assignment caches for enrolled students
+            const enrolledStudents = await CourseEnrollment.find({ course: course._id, role: "student" }).select("user");
+            for (const enrollment of enrolledStudents) {
+                await client.del(`studentAssignments:${enrollment.user}`);
+            }
+
             return res.status(200).json({
                 message: `Assignment ${newPublished ? "published" : "unpublished"} successfully`,
                 assignment
@@ -459,6 +476,12 @@ const deleteAssignment = async (req, res) => {
             assignment.isPublished = false
             assignment.deletedAt = new Date()
             await assignment.save()
+
+            // Invalidate student assignment caches for enrolled students
+            const enrolledStudentsOnDelete = await CourseEnrollment.find({ course: assignment?.course?._id, role: "student" }).select("user");
+            for (const enrollment of enrolledStudentsOnDelete) {
+                await client.del(`studentAssignments:${enrollment.user}`);
+            }
 
             return res.status(200).json({ message: "Assignment deleted successfully" })
         }
@@ -536,11 +559,100 @@ const getAssignmentSummary = async (req, res) => {
     }
 }
 
+// Get all assignments for the current student across all enrolled courses
+const getStudentAssignments = async (req, res) => {
+    try {
+        const userId = req.user._id;
+        // const cacheKey = `studentAssignments:${userId}`;
+
+        // // Check cache
+        // const cached = await client.get(cacheKey);
+        // if (cached) {
+        //     const parsed = JSON.parse(cached);
+        //     return res.status(200).json({
+        //         message: "Student assignments fetched from cache",
+        //         count: parsed.length,
+        //         assignments: parsed
+        //     });
+        // }
+
+        // Get all courses student is enrolled in
+        const studentEnrollments = await CourseEnrollment.find({
+            user: userId,
+            role: "student"
+        }).populate({
+            path: "course",
+            select: "title courseCode isPublished isActive"
+        });
+
+        console.log(`🔍 Student ${userId} has ${studentEnrollments.length} enrollments`);
+        studentEnrollments.forEach(e => {
+            console.log(`   📚 Course: ${e.course?.title} | Published: ${e.course?.isPublished}`);
+        });
+
+        if (studentEnrollments.length === 0) {
+            return res.status(200).json({
+                message: "No enrolled courses found",
+                count: 0,
+                assignments: []
+            });
+        }
+
+        // Only include courses that are published and active
+        const courseIds = studentEnrollments
+            .filter(enrollment => enrollment.course && enrollment.course.isPublished)
+            .map(enrollment => enrollment.course._id);
+
+        console.log(`🔍 Published courseIds: ${courseIds}`);
+
+        if (courseIds.length === 0) {
+            return res.status(200).json({
+                message: "No published courses found",
+                count: 0,
+                assignments: []
+            });
+        }
+
+        // Get all published assignments for these courses
+        const assignments = await Assignment.find({
+            course: { $in: courseIds },
+            isPublished: true,
+            isActive: true
+        })
+            .populate({
+                path: "course",
+                select: "title courseCode"
+            })
+            .populate({
+                path: "createdBy",
+                select: "fullName email"
+            })
+            .sort({ createdAt: -1 });
+
+        console.log(`🔍 Found ${assignments.length} published assignments for student`);
+
+        // // Cache results for 5 minutes
+        // await client.set(cacheKey, JSON.stringify(assignments), "EX", 300);
+
+        return res.status(200).json({
+            message: "Student assignments fetched successfully",
+            count: assignments.length,
+            assignments
+        });
+    } catch (error) {
+        console.error("Failed to fetch student assignments:", error);
+        return res.status(500).json({
+            message: "Failed to fetch student assignments",
+            error: error.message
+        });
+    }
+};
 
 export {
     createAssignment,
     updateAssignment,
     getAssignments,
+    getStudentAssignments,
     getAssignmentByID,
     togglePublishUnpublishAssignment,
     deleteAssignment,
