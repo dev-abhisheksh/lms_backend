@@ -407,7 +407,8 @@ const togglePublishUnpublishAssignment = async (req, res) => {
                 role: "teacher"
             })
             if (!teacherEnrollment) return res.status(403).json({ message: "You're not assigned to teach this course" })
-            if (assignment.createdBy.toString() !== req.user._id.toString()) {
+            const creatorId = assignment.createdBy._id ? assignment.createdBy._id.toString() : assignment.createdBy.toString();
+            if (creatorId !== req.user._id.toString()) {
                 return res.status(403).json({ message: "Access denied. You're not the creator" })
             }
 
@@ -469,7 +470,8 @@ const deleteAssignment = async (req, res) => {
                 role: "teacher"
             })
             if (!teacherEnrollment) return res.status(403).json({ message: "You're not assigned to teach this course" })
-            if (assignment.createdBy.toString() !== req.user._id.toString()) {
+            const creatorId = assignment.createdBy._id ? assignment.createdBy._id.toString() : assignment.createdBy.toString();
+            if (creatorId !== req.user._id.toString()) {
                 return res.status(403).json({ message: "You're not the creator" })
             }
             assignment.isActive = false
