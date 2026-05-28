@@ -197,6 +197,11 @@ const updateAssignment = async (req, res) => {
             { new: true }
         )
 
+        if (global.io) {
+            global.io.to(`course-${assignment.course._id}`).emit("assignment:updated", updatedAssignment);
+            console.log(`📢 Assignment updated broadcast to course-${assignment.course._id}`);
+        }
+
         return res.status(200).json({
             message: "Assignment updated successfully",
             updatedAssignment
@@ -391,6 +396,11 @@ const togglePublishUnpublishAssignment = async (req, res) => {
             assignment.publishedAt = newPublished ? new Date() : null;
             await assignment.save()
 
+            if (global.io) {
+                global.io.to(`course-${course._id}`).emit("assignment:updated", assignment);
+                console.log(`📢 Assignment publish toggled broadcast to course-${course._id}`);
+            }
+
             return res.status(200).json({
                 message: `Assignment ${newPublished ? "published" : "unpublished"} successfully`,
                 assignment
@@ -420,6 +430,11 @@ const togglePublishUnpublishAssignment = async (req, res) => {
             const enrolledStudents = await CourseEnrollment.find({ course: course._id, role: "student" }).select("user");
             for (const enrollment of enrolledStudents) {
                 await client.del(`studentAssignments:${enrollment.user}`);
+            }
+
+            if (global.io) {
+                global.io.to(`course-${course._id}`).emit("assignment:updated", assignment);
+                console.log(`📢 Assignment publish toggled broadcast to course-${course._id}`);
             }
 
             return res.status(200).json({
@@ -460,6 +475,11 @@ const deleteAssignment = async (req, res) => {
             assignment.deletedAt = new Date()
             await assignment.save()
 
+            if (global.io) {
+                global.io.to(`course-${course._id}`).emit("assignment:deleted", { assignmentId: assignment._id });
+                console.log(`📢 Assignment deleted broadcast to course-${course._id}`);
+            }
+
             return res.status(200).json({ message: "Assignment deleted successfully (admin : soft-delete)" })
         }
 
@@ -483,6 +503,11 @@ const deleteAssignment = async (req, res) => {
             const enrolledStudentsOnDelete = await CourseEnrollment.find({ course: assignment?.course?._id, role: "student" }).select("user");
             for (const enrollment of enrolledStudentsOnDelete) {
                 await client.del(`studentAssignments:${enrollment.user}`);
+            }
+
+            if (global.io) {
+                global.io.to(`course-${course._id}`).emit("assignment:deleted", { assignmentId: assignment._id });
+                console.log(`📢 Assignment deleted broadcast to course-${course._id}`);
             }
 
             return res.status(200).json({ message: "Assignment deleted successfully" })
