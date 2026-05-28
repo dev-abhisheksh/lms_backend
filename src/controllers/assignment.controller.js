@@ -26,22 +26,18 @@ const createAssignment = async (req, res) => {
         // if (!course.isActive) return res.status(403).json({ message: "Course is not active" });
         if (!course.isPublished) return res.status(403).json({ message: "Course is not published" });
 
-        if (req.user.role !== "admin") {
-            if (req.user.role !== "teacher") {
-                return res.status(403).json({ message: "Access denied: Not authorized" });
-            }
+        if (req.user.role !== "teacher") {
+            return res.status(403).json({ message: "Only teachers can create assignments" });
+        }
 
-            const teacherEnrollment = await CourseEnrollment.findOne({
-                user: req.user._id,
-                course: courseId,
-                role: "teacher"
-            });
+        const teacherEnrollment = await CourseEnrollment.findOne({
+            user: req.user._id,
+            course: courseId,
+            role: "teacher"
+        });
 
-            if (!teacherEnrollment) {
-                return res.status(403).json({ message: "You're not assigned to teach this course" });
-            }
-        } else {
-            return res.status(403).json({ message: "Only assigned teachers can create assignments" })
+        if (!teacherEnrollment) {
+            return res.status(403).json({ message: "You're not assigned to teach this course" });
         }
 
         const now = new Date();
@@ -375,79 +371,87 @@ const getAssignmentByID = async (req, res) => {
 const togglePublishUnpublishAssignment = async (req, res) => {
     try {
         const { assignmentId } = req.params;
-        if (!assignmentId) return res.status(400).json({ message: "AssignmentID is required" })
+        if (!assignmentId) return res.status(400).json({ message: "AssignmentID is required" });
 
         const assignment = await Assignment.findById(assignmentId)
             .populate({
                 path: "course",
-                select: "title isPublish",
+                select: "title isPublished",
                 populate: { path: "department", select: "name code isActive" }
             })
-            .populate("createdBy", "_id fullName role")
-        if (!assignment) return res.status(404).json({ message: "Assignment not found" })
+            .populate("createdBy", "_id fullName role");
 
-        const course = assignment?.course;
-        const department = assignment?.course?.department;
+        if (!assignment) return res.status(404).json({ message: "Assignment not found" });
 
-        const newPublished = !Boolean(assignment.isPublished)
+        const course = assignment.course;
+        const department = course.department;
 
-        if (req.user.role === "admin") {
-            assignment.isPublished = newPublished;
-            assignment.publishedAt = newPublished ? new Date() : null;
-            await assignment.save()
+        // shared checks for everyone
+        if (!department?.isActive) return res.status(403).json({ message: "Department is not active" });
+        if (!assignment.isActive) return res.status(403).json({ message: "Assignment is deleted" });
 
-            if (global.io) {
-                global.io.to(`course-${course._id}`).emit("assignment:updated", assignment);
-                console.log(`📢 Assignment publish toggled broadcast to course-${course._id}`);
-            }
-
-            return res.status(200).json({
-                message: `Assignment ${newPublished ? "published" : "unpublished"} successfully`,
-                assignment
-            })
-        }
-
-        if (!department?.isActive) return res.status(403).json({ message: "Department is not active" })
-        if (!assignment?.isActive) return res.status(403).json({ message: "Assignment is deleted" })
-
+        // teacher must be enrolled AND must be the creator
         if (req.user.role === "teacher") {
             const teacherEnrollment = await CourseEnrollment.findOne({
                 user: req.user._id,
                 course: course._id,
                 role: "teacher"
-            })
-            if (!teacherEnrollment) return res.status(403).json({ message: "You're not assigned to teach this course" })
-            const creatorId = assignment.createdBy._id ? assignment.createdBy._id.toString() : assignment.createdBy.toString();
+            });
+            if (!teacherEnrollment) return res.status(403).json({ message: "You're not assigned to teach this course" });
+
+            const creatorId = assignment.createdBy._id?.toString() ?? assignment.createdBy.toString();
             if (creatorId !== req.user._id.toString()) {
-                return res.status(403).json({ message: "Access denied. You're not the creator" })
+                return res.status(403).json({ message: "Access denied. You're not the creator" });
             }
-
-            assignment.isPublished = newPublished;
-            assignment.publishedAt = newPublished ? new Date() : null;
-            await assignment.save();
-
-            // Invalidate student assignment caches for enrolled students
-            const enrolledStudents = await CourseEnrollment.find({ course: course._id, role: "student" }).select("user");
-            for (const enrollment of enrolledStudents) {
-                await client.del(`studentAssignments:${enrollment.user}`);
-            }
-
-            if (global.io) {
-                global.io.to(`course-${course._id}`).emit("assignment:updated", assignment);
-                console.log(`📢 Assignment publish toggled broadcast to course-${course._id}`);
-            }
-
-            return res.status(200).json({
-                message: `Assignment ${newPublished ? "published" : "unpublished"} successfully`,
-                assignment
-            })
+        } else if (req.user.role !== "admin") {
+            return res.status(403).json({ message: "Not authorized" });
         }
-        return res.status(403).json({ message: "Not authorized" })
+
+        const newPublished = !assignment.isPublished;
+        assignment.isPublished = newPublished;
+        assignment.publishedAt = newPublished ? new Date() : null;
+        await assignment.save();
+
+        // invalidate cache for all enrolled students
+        const enrolledStudents = await CourseEnrollment.find({
+            course: course._id,
+            role: "student"
+        }).select("user");
+
+        for (const enrollment of enrolledStudents) {
+            await client.del(`studentAssignments:${enrollment.user}`);
+        }
+
+        // emit the right event:
+        // publishing for first time → students don't have it yet → assignment:created
+        // unpublishing or re-publishing → students already have it → assignment:updated
+        const socketEvent = newPublished ? "assignment:created" : "assignment:updated";
+
+        global.io?.to(`course-${course._id}`).emit(socketEvent, {
+            _id: assignment._id,
+            title: assignment.title,
+            description: assignment.description,
+            dueDate: assignment.dueDate,
+            maxMarks: assignment.maxMarks,
+            course: assignment.course,
+            createdBy: assignment.createdBy,
+            isPublished: assignment.isPublished,
+            publishedAt: assignment.publishedAt,
+            attachments: assignment.attachments
+        });
+
+        console.log(`📢 Assignment ${newPublished ? "published" : "unpublished"} broadcast to course-${course._id}`);
+
+        return res.status(200).json({
+            message: `Assignment ${newPublished ? "published" : "unpublished"} successfully`,
+            assignment
+        });
+
     } catch (error) {
         console.error("Toggle assignment publish error:", error);
         return res.status(500).json({ message: "Failed to toggle assignment publish status" });
     }
-}
+};
 
 const deleteAssignment = async (req, res) => {
     try {
