@@ -334,8 +334,8 @@ const mySubmissions = async (req, res) => {
 
 const getSingleSubmission = async (req, res) => {
     try {
-        if (!["admin", "teacher"].includes(req.user.role)) {
-            return res.status(403).json({ message: "Only admins and teachers are allowed" });
+        if (!["admin", "teacher", "student"].includes(req.user.role)) {
+            return res.status(403).json({ message: "Not authorized" });
         }
 
         const { submissionId } = req.params;
@@ -364,6 +364,17 @@ const getSingleSubmission = async (req, res) => {
         // Admin bypasses all checks
         if (req.user.role === "admin") {
             return res.status(200).json({ message: "Submission fetched successfully", submission });
+        }
+
+        // Student checks
+        if (req.user.role === "student") {
+            if (submission.student.toString() !== req.user._id.toString()) {
+                return res.status(403).json({ message: "Not authorized to view this submission" });
+            }
+            return res.status(200).json({
+                message: "Submission fetched successfully",
+                submission
+            });
         }
 
         // Teacher checks

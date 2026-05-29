@@ -14,7 +14,7 @@ router.post("/grade/:submissionId", verifyJWT, authorizeRoles("teacher", "admin"
 
 router.patch("/delete/:submissionId", verifyJWT, authorizeRoles("admin", "student"), rateLimiter({ keyPrefix: "deleteSubmission", limit: 15, windowSec: 60 }), deleteSubmission)
 router.get("/my-submissions", verifyJWT, authorizeRoles("student"), mySubmissions)
-router.get("/submission/:submissionId", verifyJWT, authorizeRoles("admin", "teacher"), getSingleSubmission)
+router.get("/submission/:submissionId", verifyJWT, authorizeRoles("admin", "teacher", "student"), getSingleSubmission)
 router.patch("/update/:submissionId", verifyJWT, authorizeRoles("student"), rateLimiter({ keyPrefix: "updateSubmission", limit: 5, windowSec: 60 }), upload.array("files", 5), updateSubmission)
 router.get("/submission-status/:assignmentId", verifyJWT, authorizeRoles("admin", "teacher"), rateLimiter({ keyPrefix: "submissionsStats", limit: 30, windowSec: 60 }), getSubmissionStatusForAssignment)
 
