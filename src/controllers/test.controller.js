@@ -202,6 +202,15 @@ export const updateTest = async (req, res) => {
 
         await client.del(`tests:${test.course}`);
 
+        // Emit real-time update
+        if (global.io) {
+            const roomName = `course-${test.course.toString()}`;
+            global.io.to(roomName).emit("test:updated", {
+                message: `Test updated: ${updatedTest.title}`,
+                test: updatedTest
+            });
+        }
+
         return res.status(200).json({ message: "Test updated", test: updatedTest });
     } catch (error) {
         console.error("Update Test Error:", error);
@@ -231,6 +240,15 @@ export const deleteTest = async (req, res) => {
 
         await client.del(`tests:${test.course}`);
 
+        // Emit real-time deletion
+        if (global.io) {
+            const roomName = `course-${test.course.toString()}`;
+            global.io.to(roomName).emit("test:deleted", {
+                message: `Test removed: ${test.title}`,
+                testId: test._id
+            });
+        }
+
         return res.status(200).json({ message: "Test deleted successfully" });
     } catch (error) {
         console.error("Delete Test Error:", error);
@@ -257,10 +275,21 @@ export const togglePublishTest = async (req, res) => {
         test.isPublished = !test.isPublished;
         if (test.isPublished) {
             test.publishedAt = new Date();
-            global.io.to(`course-${test.course}`).emit("test:published", {
-                message: `New test published: ${test.title}`,
-                test
-            });
+            if (global.io) {
+                const roomName = `course-${test.course.toString()}`;
+                global.io.to(roomName).emit("test:published", {
+                    message: `New test published: ${test.title}`,
+                    test
+                });
+            }
+        } else {
+            if (global.io) {
+                const roomName = `course-${test.course.toString()}`;
+                global.io.to(roomName).emit("test:unpublished", {
+                    message: `Test moved to draft: ${test.title}`,
+                    testId: test._id
+                });
+            }
         }
         await test.save();
 
