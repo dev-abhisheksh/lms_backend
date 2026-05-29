@@ -52,7 +52,7 @@ export const submitTest = async (req, res) => {
                 }
             }
             // Add other types (obt, essay) logic if needed. Essay requires teacher grading.
-            
+
             return {
                 questionId: q._id,
                 selectedOption: studentAns?.selectedOption,
@@ -92,7 +92,7 @@ export const getMyTestSubmissions = async (req, res) => {
 export const createTest = async (req, res) => {
     try {
         const { courseId } = req.params;
-        const { title, description, type, duration, totalQuestions, totalMarks, passingMarks, isPublished } = req.body;
+        const { title, description, type, duration, totalQuestions, totalMarks, passingMarks, isPublished, questions } = req.body;
 
         if (!courseId || !title?.trim() || !type || !duration || !totalMarks || !passingMarks) {
             return res.status(400).json({ message: "Missing required fields" });
@@ -113,13 +113,14 @@ export const createTest = async (req, res) => {
             description: description?.trim() || "",
             type,
             duration: Number(duration),
-            totalQuestions: Number(totalQuestions) || 0,
+            totalQuestions: Number(totalQuestions) || questions?.length || 0,
             totalMarks: Number(totalMarks),
             passingMarks: Number(passingMarks),
             isPublished: Boolean(isPublished),
             publishedAt: isPublished ? new Date() : null,
             course: courseId,
             createdBy: req.user._id,
+            questions: questions || []
         });
 
         await client.del(`tests:${courseId}`);
@@ -142,30 +143,38 @@ export const createTest = async (req, res) => {
 export const getTestsByCourse = async (req, res) => {
     try {
         const { courseId } = req.params;
-        
-        const cacheKey = `tests:${courseId}:${req.user.role}:${req.user._id}`;
+
+        const cacheKey = `tests:${courseId}`;
         const cached = await client.get(cacheKey);
+
+        let tests;
         if (cached) {
-            return res.status(200).json({ tests: JSON.parse(cached) });
+            tests = JSON.parse(cached);
+        } else {
+            const course = await Course.findById(courseId).populate("department");
+            if (!course) return res.status(404).json({ message: "Course not found" });
+
+            tests = await Test.find({ course: courseId, isActive: true }).sort({ createdAt: -1 });
+            await client.set(cacheKey, JSON.stringify(tests), "EX", 300);
         }
 
-        const course = await Course.findById(courseId).populate("department");
-        if (!course) return res.status(404).json({ message: "Course not found" });
-
-        let tests = await Test.find({ course: courseId, isActive: true }).sort({ createdAt: -1 });
-
+        // Apply role-based filtering and authorization in memory
         if (req.user.role === "teacher") {
             const enrollment = await CourseEnrollment.findOne({ user: req.user._id, course: courseId, role: "teacher" });
             if (!enrollment) return res.status(403).json({ message: "Not assigned to this course" });
+            // Teachers see all tests
+            return res.status(200).json({ tests });
         } else if (req.user.role === "student") {
             const enrollment = await CourseEnrollment.findOne({ user: req.user._id, course: courseId, role: "student" });
             if (!enrollment) return res.status(403).json({ message: "Not enrolled in this course" });
-            tests = tests.filter(t => t.isPublished);
+            // Students only see published tests
+            const publishedTests = tests.filter(t => t.isPublished);
+            return res.status(200).json({ tests: publishedTests });
+        } else if (req.user.role === "admin") {
+            return res.status(200).json({ tests });
         }
 
-        await client.set(cacheKey, JSON.stringify(tests), "EX", 300);
-
-        return res.status(200).json({ tests });
+        return res.status(403).json({ message: "Access denied" });
     } catch (error) {
         console.error("Get Tests Error:", error);
         return res.status(500).json({ message: "Failed to fetch tests" });
@@ -190,7 +199,7 @@ export const updateTest = async (req, res) => {
         }
 
         const updatedTest = await Test.findByIdAndUpdate(testId, { $set: updates }, { new: true });
-        
+
         await client.del(`tests:${test.course}`);
 
         return res.status(200).json({ message: "Test updated", test: updatedTest });
@@ -248,13 +257,10 @@ export const togglePublishTest = async (req, res) => {
         test.isPublished = !test.isPublished;
         if (test.isPublished) {
             test.publishedAt = new Date();
-            // Emit real-time notification
-            if (global.io) {
-                global.io.to(`course-${test.course}`).emit("test:published", {
-                    message: `New test published: ${test.title}`,
-                    test
-                });
-            }
+            global.io.to(`course-${test.course}`).emit("test:published", {
+                message: `New test published: ${test.title}`,
+                test
+            });
         }
         await test.save();
 
