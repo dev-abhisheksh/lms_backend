@@ -344,7 +344,7 @@ const getSingleSubmission = async (req, res) => {
         const submission = await Submission.findById(submissionId)
             .populate({
                 path: "assignment",
-                select: "title isActive isPublished course",
+                select: "title isActive isPublished course description dueDate maxMarks attachments",
                 populate: {
                     path: "course",
                     select: "title isPublished department",
