@@ -3,6 +3,92 @@ import { Course } from "../models/course.model.js";
 import { CourseEnrollment } from "../models/courseEnrollment.model.js";
 import { client } from "../utils/redisClient.js";
 
+import { TestSubmission } from "../models/testSubmission.model.js";
+
+export const getTestById = async (req, res) => {
+    try {
+        const { testId } = req.params;
+        const test = await Test.findById(testId).populate("course");
+        if (!test) return res.status(404).json({ message: "Test not found" });
+
+        // If student, check enrollment and only return if published
+        if (req.user.role === "student") {
+            const enrollment = await CourseEnrollment.findOne({ user: req.user._id, course: test.course, role: "student" });
+            if (!enrollment) return res.status(403).json({ message: "Not enrolled in this course" });
+            if (!test.isPublished) return res.status(403).json({ message: "Test not available" });
+        }
+
+        return res.status(200).json({ test });
+    } catch (error) {
+        console.error("Get Test Error:", error);
+        return res.status(500).json({ message: "Failed to fetch test" });
+    }
+};
+
+export const submitTest = async (req, res) => {
+    try {
+        const { testId } = req.params;
+        const { answers } = req.body; // Array of { questionId, selectedOption }
+
+        const test = await Test.findById(testId);
+        if (!test) return res.status(404).json({ message: "Test not found" });
+
+        // Check if already submitted
+        const existing = await TestSubmission.findOne({ test: testId, student: req.user._id });
+        if (existing) return res.status(400).json({ message: "Test already submitted" });
+
+        let score = 0;
+        const evaluatedAnswers = test.questions.map(q => {
+            const studentAns = answers.find(a => a.questionId === q._id.toString());
+            let isCorrect = false;
+            let marksObtained = 0;
+
+            if (q.type === "mcq" && studentAns) {
+                const correctOptIndex = q.options.findIndex(o => o.isCorrect);
+                if (studentAns.selectedOption === correctOptIndex) {
+                    isCorrect = true;
+                    marksObtained = q.marks;
+                    score += q.marks;
+                }
+            }
+            // Add other types (obt, essay) logic if needed. Essay requires teacher grading.
+            
+            return {
+                questionId: q._id,
+                selectedOption: studentAns?.selectedOption,
+                isCorrect,
+                marksObtained
+            };
+        });
+
+        const submission = await TestSubmission.create({
+            test: testId,
+            student: req.user._id,
+            answers: evaluatedAnswers,
+            score,
+            totalMarks: test.totalMarks,
+            status: test.type === "essay" || test.type === "mixed" ? "submitted" : "graded"
+        });
+
+        return res.status(201).json({ message: "Test submitted successfully", submission });
+    } catch (error) {
+        console.error("Submit Test Error:", error);
+        return res.status(500).json({ message: "Failed to submit test" });
+    }
+};
+
+export const getMyTestSubmissions = async (req, res) => {
+    try {
+        const submissions = await TestSubmission.find({ student: req.user._id })
+            .populate("test", "title totalMarks duration type course")
+            .sort({ createdAt: -1 });
+        return res.status(200).json({ submissions });
+    } catch (error) {
+        console.error("Get My Submissions Error:", error);
+        return res.status(500).json({ message: "Failed to fetch submissions" });
+    }
+};
+
 export const createTest = async (req, res) => {
     try {
         const { courseId } = req.params;
@@ -37,6 +123,14 @@ export const createTest = async (req, res) => {
         });
 
         await client.del(`tests:${courseId}`);
+
+        // Emit real-time notification if published
+        if (test.isPublished && global.io) {
+            global.io.to(`course-${courseId}`).emit("test:published", {
+                message: `New test published: ${test.title}`,
+                test
+            });
+        }
 
         return res.status(201).json({ message: "Test created successfully", test });
     } catch (error) {
@@ -152,7 +246,16 @@ export const togglePublishTest = async (req, res) => {
         }
 
         test.isPublished = !test.isPublished;
-        if (test.isPublished) test.publishedAt = new Date();
+        if (test.isPublished) {
+            test.publishedAt = new Date();
+            // Emit real-time notification
+            if (global.io) {
+                global.io.to(`course-${test.course}`).emit("test:published", {
+                    message: `New test published: ${test.title}`,
+                    test
+                });
+            }
+        }
         await test.save();
 
         await client.del(`tests:${test.course}`);

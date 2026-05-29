@@ -4,7 +4,10 @@ import {
     getTestsByCourse,
     updateTest,
     deleteTest,
-    togglePublishTest
+    togglePublishTest,
+    getTestById,
+    submitTest,
+    getMyTestSubmissions
 } from "../controllers/test.controller.js";
 import authorizeRoles from "../middlewares/role.middleware.js";
 import verifyJWT from "../middlewares/auth.midleware.js";
@@ -17,8 +20,17 @@ router.use(verifyJWT);
 // Create a new test (Admin or Teacher)
 router.post("/course/:courseId", authorizeRoles("admin", "teacher"), createTest);
 
+// Get my test submissions (Student) - PLACE THIS BEFORE /:testId
+router.get("/my-submissions", authorizeRoles("student"), getMyTestSubmissions);
+
 // Get tests for a course (Admin, Teacher, Student)
 router.get("/course/:courseId", authorizeRoles("admin", "teacher", "student"), getTestsByCourse);
+
+// Get a single test by ID
+router.get("/:testId", authorizeRoles("admin", "teacher", "student"), getTestById);
+
+// Submit a test (Student)
+router.post("/:testId/submit", authorizeRoles("student"), submitTest);
 
 // Update a test (Admin or Teacher)
 router.put("/:testId", authorizeRoles("admin", "teacher"), updateTest);
