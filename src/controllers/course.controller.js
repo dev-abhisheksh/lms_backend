@@ -10,11 +10,12 @@ const delRedisCache = async (client, patterns) => {
     for (const pattern of patternArray) {
         let cursor = "0";
         do {
-            const [next, keys] = await client.scan(cursor, "MATCH", pattern, "COUNT", 100)
-            if (keys.length > 0) {
-                await client.del(...keys)
-            }
-            cursor = next
+            // const [next, keys] = await client.scan(cursor, "MATCH", pattern, "COUNT", 100)
+            // if (keys.length > 0) {
+            //     await client.del(...keys)
+            // }
+            // cursor = next
+            cursor = "0" // Ensure loop terminates
         } while (cursor !== "0")
         console.log("Bro cache cleared fron the eam dont u worry")
     }
@@ -69,10 +70,10 @@ const createCourse = async (req, res) => {
             isPublished: true
         })
 
-        await delRedisCache(client, [
-            `courses:*`,
-            `courseById:*`
-        ])
+        // await delRedisCache(client, [
+        //     `courses:*`,
+        //     `courseById:*`
+        // ])
 
         return res.status(201).json({ message: "Course created successfully", course })
     } catch (error) {
@@ -93,10 +94,10 @@ const getAllCourses = async (req, res) => {
         const cacheKey = `courses:${role}:${userId || "none"}:${departmentId || "all"}:${year || "all"}:${isPublished ?? "any"}:${search || "none"}:${page}:${limit}`
         //courses:admin:none(no specific userId do all admins can access):all(all only for admin):none:1:20
 
-        const cacheCourses = await client.get(cacheKey)
-        if (cacheCourses) {
-            return res.status(200).json(JSON.parse(cacheCourses))
-        }
+        // const cacheCourses = await client.get(cacheKey)
+        // if (cacheCourses) {
+        //     return res.status(200).json(JSON.parse(cacheCourses))
+        // }
 
         let department = null;
         if (departmentId) {
@@ -150,11 +151,11 @@ const getAllCourses = async (req, res) => {
             .limit(Math.min(100, Number(limit)))
 
         //Redis storing courses in the ram
-        await client.set(cacheKey, JSON.stringify({
-            message: "Courses fetched successfully",
-            meta: { page: Number(page), limit: Number(limit), count: courses.length },
-            courses
-        }), "EX", 300)
+        // await client.set(cacheKey, JSON.stringify({
+        //     message: "Courses fetched successfully",
+        //     meta: { page: Number(page), limit: Number(limit), count: courses.length },
+        //     courses
+        // }), "EX", 300)
 
 
         return res.status(200).json({
@@ -227,13 +228,13 @@ const getCourseById = async (req, res) => {
         if (!courseId) return res.status(400).json({ message: "CoueseID is required" })
 
         const cacheKey = `courseById:${courseId}:${role}:${userId || "none"}`
-        const cached = await client.get(cacheKey)
-        if (cached) {
-            return res.status(200).json({
-                message: "Course fetched successfully",
-                course: JSON.parse(cached)
-            })
-        }
+        // const cached = await client.get(cacheKey)
+        // if (cached) {
+        //     return res.status(200).json({
+        //         message: "Course fetched successfully",
+        //         course: JSON.parse(cached)
+        //     })
+        // }
 
         const course = await Course.findById(courseId)
             .populate("department", "name code isActive")
@@ -265,7 +266,7 @@ const getCourseById = async (req, res) => {
 
         if (!isAuthorized) return res.status(403).json({ message: "Not authorized to view this course" })
 
-        await client.set(cacheKey, JSON.stringify(course), "EX", 300)
+        // await client.set(cacheKey, JSON.stringify(course), "EX", 300)
 
         return res.status(200).json({
             message: "Course fetched successfully",
@@ -325,10 +326,10 @@ const updateCourse = async (req, res) => {
         )
 
         const courseIdStr = courseId.toString()
-        await delRedisCache(client, [
-            `courses:*`,
-            `courseById:${courseIdStr}:*`
-        ])
+        // await delRedisCache(client, [
+        //     `courses:*`,
+        //     `courseById:${courseIdStr}:*`
+        // ])
 
         return res.status(200).json({
             message: "Course updated successfully",
@@ -354,10 +355,10 @@ const publishCourse = async (req, res) => {
             course.isPublished = !course.isPublished
             await course.save()
 
-            await delRedisCache(client, [
-                `courses:*`,
-                `courseById:${courseIdStr}:*`
-            ])
+            // await delRedisCache(client, [
+            //     `courses:*`,
+            //     `courseById:${courseIdStr}:*`
+            // ])
             return res.status(200).json({
                 message: `Course is now ${course.isPublished ? "isPublished" : "unpublished"}`,
                 course
@@ -378,10 +379,10 @@ const publishCourse = async (req, res) => {
             await course.save()
 
             const courseIdStr = courseId.toString()
-            await delRedisCache(client, [
-                `courses:*`,
-                `courseById:${courseIdStr}:*`
-            ])
+            // await delRedisCache(client, [
+            //     `courses:*`,
+            //     `courseById:${courseIdStr}:*`
+            // ])
 
             return res.status(200).json({
                 message: `Course is now ${course.isPublished ? "isPublished" : "unpublished"}`,

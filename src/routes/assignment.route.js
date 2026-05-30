@@ -8,7 +8,7 @@ import rateLimiter from "../middlewares/rateLimiter.js";
 const router = express.Router();
 
 // NEW: Get all assignments for current student (across all courses)
-router.get("/student/all", verifyJWT, authorizeRoles("student"), rateLimiter({ keyPrefix: "studentAssignments", limit: 10, windowSec: 300 }), getStudentAssignments)
+router.get("/student/all", verifyJWT, authorizeRoles("student"), rateLimiter({ keyPrefix: "studentAssignments", limit: 30, windowSec: 300 }), getStudentAssignments)
 
 router.post("/create/:courseId", verifyJWT, authorizeRoles("admin", "teacher"), rateLimiter({ keyPrefix: "createAssignment", limit: 5, windowSec: 300 }), upload.array("attachments", 5), createAssignment)
 

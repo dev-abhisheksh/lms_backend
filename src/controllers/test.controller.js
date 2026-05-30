@@ -1,7 +1,7 @@
 import { Test } from "../models/test.model.js";
 import { Course } from "../models/course.model.js";
 import { CourseEnrollment } from "../models/courseEnrollment.model.js";
-import { client } from "../utils/redisClient.js";
+// import { client } from "../utils/redisClient.js";
 
 import { TestSubmission } from "../models/testSubmission.model.js";
 
@@ -123,7 +123,7 @@ export const createTest = async (req, res) => {
             questions: questions || []
         });
 
-        await client.del(`tests:${courseId}`);
+        // await client.del(`tests:${courseId}`);
 
         // Emit real-time notification if published
         if (test.isPublished && global.io) {
@@ -144,8 +144,8 @@ export const getTestsByCourse = async (req, res) => {
     try {
         const { courseId } = req.params;
 
-        const cacheKey = `tests:${courseId}`;
-        const cached = await client.get(cacheKey);
+        // const cacheKey = `tests:${courseId}`;
+        // const cached = await client.get(cacheKey);
 
         const course = await Course.findById(courseId).populate("department");
         if (!course) return res.status(404).json({ message: "Course not found" });
@@ -192,7 +192,7 @@ export const updateTest = async (req, res) => {
 
         const updatedTest = await Test.findByIdAndUpdate(testId, { $set: updates }, { new: true });
 
-        await client.del(`tests:${test.course}`);
+        // await client.del(`tests:${test.course}`);
 
         // Emit real-time update
         if (global.io) {
@@ -230,7 +230,7 @@ export const deleteTest = async (req, res) => {
         test.isPublished = false;
         await test.save();
 
-        await client.del(`tests:${test.course}`);
+        // await client.del(`tests:${test.course}`);
 
         // Emit real-time deletion
         if (global.io) {
@@ -285,7 +285,7 @@ export const togglePublishTest = async (req, res) => {
         }
         await test.save();
 
-        await client.del(`tests:${test.course}`);
+        // await client.del(`tests:${test.course}`);
 
         return res.status(200).json({ message: "Test publish status updated", test });
     } catch (error) {
