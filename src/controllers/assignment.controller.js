@@ -230,20 +230,26 @@ const getAssignments = async (req, res) => {
 
         if (!course) return res.status(404).json({ message: "Course not found" })
 
-        let assignments = await Assignment.find({ course: courseId })
+        // Build the query. Always filter for active assignments.
+        // If the user is a student, ONLY fetch published assignments directly from the DB.
+        const query = { course: courseId, isActive: true };
+        if (req.user.role === "student") {
+            query.isPublished = true;
+        }
+
+        let assignments = await Assignment.find(query)
 
         const department = course?.department
 
         if (assignments.length === 0) {
             return res.status(200).json({
-                message: "No active assignments found",
+                message: "No assignments found",
                 count: 0,
                 assignments: []
             })
         }
 
         if (req.user.role === "admin") {
-            // await client.set(cacheKey, JSON.stringify(assignments), "EX", 300)
             return res.status(200).json({
                 message: "Fetched all assignments",
                 count: assignments.length,
@@ -252,7 +258,6 @@ const getAssignments = async (req, res) => {
         }
 
         if (!department.isActive) return res.status(403).json({ message: "Department is not active" })
-        assignments = assignments.filter(a => a.isActive)
 
         if (req.user.role === "teacher") {
             const teacherEnrollment = await CourseEnrollment.findOne({
@@ -262,7 +267,6 @@ const getAssignments = async (req, res) => {
             })
 
             if (!teacherEnrollment) return res.status(403).json({ message: "You're not assigned to teach this course" })
-            // await client.set(cacheKey, JSON.stringify(assignments), "EX", 300)
             return res.status(200).json({
                 message: "Fetched all assignments",
                 count: assignments.length,
@@ -278,9 +282,6 @@ const getAssignments = async (req, res) => {
         })
 
         if (!studentEnrollment) return res.status(403).json({ message: "You're not enrolled in this course" })
-        assignments = assignments.filter(a => a.isPublished)
-
-        // await client.set(cacheKey, JSON.stringify(assignments), "EX", 300)
 
         return res.status(200).json({
             message: "Fetched all assignments",
@@ -447,19 +448,16 @@ const togglePublishUnpublishAssignment = async (req, res) => {
                 message: `A new assignment "${assignment.title}" has been published in ${course.title}`,
                 link: `/dashboard/assignments/${assignment._id}`,
                 metadata: { assignmentId: assignment._id, courseId: course._id }
-            }));
+            }))
 
-            // Create database records
-            await Notification.insertMany(notifications);
+            await Notification.insertMany(notifications)
 
-            // Notify each student individually for their notification bell
-            enrolledStudents.forEach(student => {
+            enrolledStudents.map(student =>{
                 global.io?.to(`user-${student.user}`).emit("notification:new", {
                     title: "New Assignment",
-                    message: assignment.title,
-                    link: `/dashboard/assignments/${assignment._id}`
-                });
-            });
+                    message: assignment.title
+                })
+            })
         }
 
         return res.status(200).json({
@@ -581,25 +579,40 @@ const getAssignmentSummary = async (req, res) => {
             if (!teacherEnrollment) return res.status(403).json({ message: "You're not assigned to teach this course" })
         }
 
-        const submissions = await Submission.find({
-            assignment: assignmentId,
-            status: { $ne: "deleted" }
-        })
-            .select("status isLate")
+        const summaryData = await Submission.aggregate([
+            {
+                $match: {
+                    assignment: assignment._id, // use the parsed objectId
+                    status: { $ne: "deleted" }
+                }
+            },
+            {
+                $group: {
+                    _id: null,
+                    total: { $sum: 1 },
+                    graded: {
+                        $sum: { $cond: [{ $eq: ["$status", "graded"] }, 1, 0] }
+                    },
+                    late: {
+                        $sum: { $cond: [{ $eq: ["$status", "late"] }, 1, 0] }
+                    },
+                    submitted: {
+                        $sum: { $cond: [{ $in: ["$status", ["submitted", "late", "graded"]] }, 1, 0] }
+                    }
+                }
+            }
+        ]);
 
-        const total = submissions.length
-        const graded = submissions.filter(s => s.status === "graded").length;
-        const late = submissions.filter(s => s.status === "late").length
-        const submitted = submissions.filter(s => s.status === "submitted" || s.status === "late")
-        const pending = total - graded
+        const summary = summaryData[0] || { total: 0, graded: 0, late: 0, submitted: 0 };
+        const pending = summary.total - summary.graded;
 
         return res.status(200).json({
             message: "Assignment summary fetched successfully",
             summary: {
-                total,
-                submitted,
-                late,
-                graded,
+                total: summary.total,
+                submitted: summary.submitted,
+                late: summary.late,
+                graded: summary.graded,
                 pending
             }
         })
@@ -627,42 +640,36 @@ const getStudentAssignments = async (req, res) => {
         //     });
         // }
 
-        // Get all courses student is enrolled in
+        // Get all courses student is enrolled in, filtering for active/published courses directly via populate match
         const studentEnrollments = await CourseEnrollment.find({
             user: userId,
             role: "student"
         }).populate({
             path: "course",
+            match: { isPublished: true, isActive: true },
             select: "title courseCode isPublished isActive"
         });
 
         console.log(`🔍 Student ${userId} has ${studentEnrollments.length} enrollments`);
-        studentEnrollments.forEach(e => {
+
+        // Filter out null courses (those that didn't match the populate condition)
+        const validEnrollments = studentEnrollments.filter(e => e.course != null);
+        
+        validEnrollments.forEach(e => {
             console.log(`   📚 Course: ${e.course?.title} | Published: ${e.course?.isPublished}`);
         });
 
-        if (studentEnrollments.length === 0) {
+        if (validEnrollments.length === 0) {
             return res.status(200).json({
-                message: "No enrolled courses found",
+                message: "No enrolled and published courses found",
                 count: 0,
                 assignments: []
             });
         }
 
-        // Only include courses that are published and active
-        const courseIds = studentEnrollments
-            .filter(enrollment => enrollment.course && enrollment.course.isPublished)
-            .map(enrollment => enrollment.course._id);
+        const courseIds = validEnrollments.map(enrollment => enrollment.course._id);
 
         console.log(`🔍 Published courseIds: ${courseIds}`);
-
-        if (courseIds.length === 0) {
-            return res.status(200).json({
-                message: "No published courses found",
-                count: 0,
-                assignments: []
-            });
-        }
 
         // Get all published assignments for these courses
         const assignments = await Assignment.find({

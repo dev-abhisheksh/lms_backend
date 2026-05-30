@@ -147,34 +147,26 @@ export const getTestsByCourse = async (req, res) => {
         const cacheKey = `tests:${courseId}`;
         const cached = await client.get(cacheKey);
 
-        let tests;
-        if (cached) {
-            tests = JSON.parse(cached);
-        } else {
-            const course = await Course.findById(courseId).populate("department");
-            if (!course) return res.status(404).json({ message: "Course not found" });
+        const course = await Course.findById(courseId).populate("department");
+        if (!course) return res.status(404).json({ message: "Course not found" });
 
-            tests = await Test.find({ course: courseId, isActive: true }).sort({ createdAt: -1 });
-            await client.set(cacheKey, JSON.stringify(tests), "EX", 300);
-        }
+        // Apply role-based filtering and authorization in the DB query
+        let query = { course: courseId, isActive: true };
 
-        // Apply role-based filtering and authorization in memory
         if (req.user.role === "teacher") {
             const enrollment = await CourseEnrollment.findOne({ user: req.user._id, course: courseId, role: "teacher" });
             if (!enrollment) return res.status(403).json({ message: "Not assigned to this course" });
-            // Teachers see all tests
-            return res.status(200).json({ tests });
         } else if (req.user.role === "student") {
             const enrollment = await CourseEnrollment.findOne({ user: req.user._id, course: courseId, role: "student" });
             if (!enrollment) return res.status(403).json({ message: "Not enrolled in this course" });
-            // Students only see published tests
-            const publishedTests = tests.filter(t => t.isPublished);
-            return res.status(200).json({ tests: publishedTests });
-        } else if (req.user.role === "admin") {
-            return res.status(200).json({ tests });
+            query.isPublished = true;
+        } else if (req.user.role !== "admin") {
+            return res.status(403).json({ message: "Access denied" });
         }
 
-        return res.status(403).json({ message: "Access denied" });
+        const tests = await Test.find(query).sort({ createdAt: -1 });
+        return res.status(200).json({ tests });
+
     } catch (error) {
         console.error("Get Tests Error:", error);
         return res.status(500).json({ message: "Failed to fetch tests" });

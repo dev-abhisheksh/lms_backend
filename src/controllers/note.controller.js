@@ -62,9 +62,7 @@ export const getNotesByCourse = async (req, res) => {
         const course = await Course.findById(courseId);
         if (!course) return res.status(404).json({ message: "Course not found" });
 
-        let notes = await Note.find({ course: courseId, isActive: true })
-            .populate("createdBy", "fullName email")
-            .sort({ createdAt: -1 });
+        let query = { course: courseId, isActive: true };
 
         if (req.user.role === "teacher") {
             const enrollment = await CourseEnrollment.findOne({ user: req.user._id, course: courseId, role: "teacher" });
@@ -72,8 +70,12 @@ export const getNotesByCourse = async (req, res) => {
         } else if (req.user.role === "student") {
             const enrollment = await CourseEnrollment.findOne({ user: req.user._id, course: courseId, role: "student" });
             if (!enrollment) return res.status(403).json({ message: "Not enrolled in this course" });
-            notes = notes.filter((n) => n.isPublished);
+            query.isPublished = true;
         }
+
+        const notes = await Note.find(query)
+            .populate("createdBy", "fullName email")
+            .sort({ createdAt: -1 });
 
         return res.status(200).json({ notes });
     } catch (error) {
