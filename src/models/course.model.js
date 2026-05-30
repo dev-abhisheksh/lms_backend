@@ -23,9 +23,8 @@ const courseSchema = new mongoose.Schema({
     },
     year: {
         type: String,
-        enum: ["FY", "SY", "TY"],
         required: true,
-        comment: "Which year this course is for"
+        comment: "Standard for schools (e.g., 10) or Year for colleges (e.g., FY)"
     },
     thumbnail: String,
     createdBy: {

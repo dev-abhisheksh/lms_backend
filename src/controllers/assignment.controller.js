@@ -3,6 +3,7 @@
 import { Assignment } from "../models/assignment.model.js";
 import { Course } from "../models/course.model.js";
 import { CourseEnrollment } from "../models/courseEnrollment.model.js";
+import { Notification } from "../models/notification.model.js";
 import { Submission } from "../models/submissions.model.js"
 import { uploadToCloudinary } from "../utils/cloudinary.js";
 import { client } from "../utils/redisClient.js";
@@ -422,9 +423,6 @@ const togglePublishUnpublishAssignment = async (req, res) => {
             await client.del(`studentAssignments:${enrollment.user}`);
         }
 
-        // emit the right event:
-        // publishing for first time → students don't have it yet → assignment:created
-        // unpublishing or re-publishing → students already have it → assignment:updated
         const socketEvent = newPublished ? "assignment:created" : "assignment:updated";
 
         global.io?.to(`course-${course._id}`).emit(socketEvent, {
@@ -440,7 +438,29 @@ const togglePublishUnpublishAssignment = async (req, res) => {
             attachments: assignment.attachments
         });
 
-        console.log(`📢 Assignment ${newPublished ? "published" : "unpublished"} broadcast to course-${course._id}`);
+        if (newPublished) {
+            const notifications = enrolledStudents.map(student => ({
+                recipient: student.user,
+                sender: req.user._id,
+                type: "assignment",
+                title: "New Assignment Published",
+                message: `A new assignment "${assignment.title}" has been published in ${course.title}`,
+                link: `/dashboard/assignments/${assignment._id}`,
+                metadata: { assignmentId: assignment._id, courseId: course._id }
+            }));
+
+            // Create database records
+            await Notification.insertMany(notifications);
+
+            // Notify each student individually for their notification bell
+            enrolledStudents.forEach(student => {
+                global.io?.to(`user-${student.user}`).emit("notification:new", {
+                    title: "New Assignment",
+                    message: assignment.title,
+                    link: `/dashboard/assignments/${assignment._id}`
+                });
+            });
+        }
 
         return res.status(200).json({
             message: `Assignment ${newPublished ? "published" : "unpublished"} successfully`,

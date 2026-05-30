@@ -35,8 +35,15 @@ const userSchema = new mongoose.Schema({
     },
     year: {
         type: String,
-        enum: ["FY", "SY", "TY", null],
-        default: null
+        default: null,
+        comment: "Standard for schools (e.g., 10) or Year for colleges (e.g., FY)"
+    },
+    section: {
+        type: String,
+        default: null,
+        uppercase: true,
+        trim: true,
+        comment: "Section for schools (e.g., A, B) or Division for colleges"
     },
     cohortYear: {
         type: Number,
