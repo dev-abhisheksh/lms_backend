@@ -1,5 +1,6 @@
 
 
+import mongoose from "mongoose";
 import { Assignment } from "../models/assignment.model.js";
 import { Course } from "../models/course.model.js";
 import { CourseEnrollment } from "../models/courseEnrollment.model.js";
@@ -627,51 +628,24 @@ const getAssignmentSummary = async (req, res) => {
 const getStudentAssignments = async (req, res) => {
     try {
         const userId = req.user._id;
-        // const cacheKey = `studentAssignments:${userId}`;
 
-        // // Check cache
-        // const cached = await client.get(cacheKey);
-        // if (cached) {
-        //     const parsed = JSON.parse(cached);
-        //     return res.status(200).json({
-        //         message: "Student assignments fetched from cache",
-        //         count: parsed.length,
-        //         assignments: parsed
-        //     });
-        // }
-
-        // Get all courses student is enrolled in, filtering for active/published courses directly via populate match
-        const studentEnrollments = await CourseEnrollment.find({
-            user: userId,
+        // 1. Get all Course IDs where the student is enrolled
+        const enrollments = await CourseEnrollment.find({
+            user: new mongoose.Types.ObjectId(userId),
             role: "student"
-        }).populate({
-            path: "course",
-            match: { isPublished: true, isActive: true },
-            select: "title courseCode isPublished isActive"
-        });
+        }).select("course");
 
-        console.log(`🔍 Student ${userId} has ${studentEnrollments.length} enrollments`);
-
-        // Filter out null courses (those that didn't match the populate condition)
-        const validEnrollments = studentEnrollments.filter(e => e.course != null);
-        
-        validEnrollments.forEach(e => {
-            console.log(`   📚 Course: ${e.course?.title} | Published: ${e.course?.isPublished}`);
-        });
-
-        if (validEnrollments.length === 0) {
+        if (!enrollments || enrollments.length === 0) {
             return res.status(200).json({
-                message: "No enrolled and published courses found",
+                message: "No enrolled courses found",
                 count: 0,
                 assignments: []
             });
         }
 
-        const courseIds = validEnrollments.map(enrollment => enrollment.course._id);
+        const courseIds = enrollments.map(e => e.course);
 
-        console.log(`🔍 Published courseIds: ${courseIds}`);
-
-        // Get all published assignments for these courses
+        // 2. Fetch published assignments for these courses
         const assignments = await Assignment.find({
             course: { $in: courseIds },
             isPublished: true,
@@ -686,11 +660,6 @@ const getStudentAssignments = async (req, res) => {
                 select: "fullName email"
             })
             .sort({ createdAt: -1 });
-
-        console.log(`🔍 Found ${assignments.length} published assignments for student`);
-
-        // // Cache results for 5 minutes
-        // await client.set(cacheKey, JSON.stringify(assignments), "EX", 300);
 
         return res.status(200).json({
             message: "Student assignments fetched successfully",
