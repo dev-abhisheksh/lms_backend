@@ -62,34 +62,92 @@ const createDepartment = async (req, res) => {
 
 const getAllDepartments = async (req, res) => {
     try {
-        let query = {};
-        if (req.user.role === "student" || req.user.role === "teacher" || req.user.role === "manager") {
-            query = { isActive: true }
+        let matchQuery = {};
+        if (req.user.role !== "admin") {
+            matchQuery = { isActive: true };
         }
 
-        const cacheKey = `allDepartments:${req.user.role}`
-        const cached = await client.get(cacheKey)
+        const cacheKey = `allDepartments:${req.user.role}`;
+        const cached = await client.get(cacheKey);
         if (cached) {
             return res.status(200).json({
                 message: "Fetched all departments",
                 departments: JSON.parse(cached)
-            })
+            });
         }
 
-        const departments = await Department.find(query)
-            .populate("manager", "fullName email username")
-            .sort({ name: 1 })
+        // Use aggregation to get counts
+        const departments = await Department.aggregate([
+            { $match: matchQuery },
+            {
+                $lookup: {
+                    from: "users",
+                    localField: "manager",
+                    foreignField: "_id",
+                    as: "manager"
+                }
+            },
+            { $unwind: { path: "$manager", preserveNullAndEmptyArrays: true } },
+            {
+                $lookup: {
+                    from: "courses",
+                    localField: "_id",
+                    foreignField: "department",
+                    as: "courses"
+                }
+            },
+            {
+                $lookup: {
+                    from: "users",
+                    localField: "_id",
+                    foreignField: "department",
+                    as: "deptUsers"
+                }
+            },
+            {
+                $addFields: {
+                    courseCount: { $size: "$courses" },
+                    studentCount: {
+                        $size: {
+                            $filter: {
+                                input: "$deptUsers",
+                                as: "u",
+                                cond: { $eq: ["$$u.role", "student"] }
+                            }
+                        }
+                    },
+                    facultyCount: {
+                        $size: {
+                            $filter: {
+                                input: "$deptUsers",
+                                as: "u",
+                                cond: { $eq: ["$$u.role", "teacher"] }
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                $project: {
+                    courses: 0,
+                    deptUsers: 0,
+                    "manager.password": 0,
+                    "manager.refreshToken": 0
+                }
+            },
+            { $sort: { name: 1 } }
+        ]);
 
-        await client.set(cacheKey, JSON.stringify(departments), "EX", 1000)
+        await client.set(cacheKey, JSON.stringify(departments), "EX", 1000);
 
         return res.status(200).json({
             message: "Fetched all departments",
             departments
-        })
+        });
 
     } catch (error) {
-        console.error("Failed to fetch departments", error)
-        return res.status(500).json({ message: "Failed to fetch departments" })
+        console.error("Failed to fetch departments", error);
+        return res.status(500).json({ message: "Failed to fetch departments" });
     }
 }
 
