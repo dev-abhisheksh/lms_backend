@@ -1,7 +1,9 @@
 import { Submission } from "../models/submissions.model.js";
 import { Assignment } from "../models/assignment.model.js";
 import cloudinary, { uploadToCloudinary } from "../utils/cloudinary.js";
-import { CourseEnrollment } from "../models/courseEnrollment.model.js"
+import { CourseEnrollment } from "../models/courseEnrollment.model.js";
+import { Notification } from "../models/notification.model.js";
+import mongoose from "mongoose";
 
 const createSubmission = async (req, res) => {
     try {
@@ -34,7 +36,7 @@ const createSubmission = async (req, res) => {
             course: course._id,
             role: "student"
         })
-            .populate("user", "fullname username")
+            .populate("user", "fullName username") // Fixed typo 'fullname' -> 'fullName'
         if (!studentEnrollment) return res.status(403).json({ message: "You're not enrolled in this course" })
 
         const existingSubmission = await Submission.findOne({
@@ -81,6 +83,41 @@ const createSubmission = async (req, res) => {
             isLate,
             status
         })
+
+        // ✅ Notify the teacher(s) about the new submission
+        try {
+            const teachers = await CourseEnrollment.find({
+                course: course._id,
+                role: "teacher"
+            }).select("user");
+
+            const studentName = req.user.fullName || studentEnrollment.user.fullName;
+            
+            const notifications = teachers.map(t => ({
+                recipient: t.user,
+                sender: req.user._id,
+                type: "submission",
+                title: "New Submission",
+                message: `${studentName} submitted "${assignment.title}"`,
+                link: `/dashboard/submissions/${submission._id}`,
+                metadata: { submissionId: submission._id, assignmentId: assignment._id }
+            }));
+
+            if (notifications.length > 0) {
+                await Notification.insertMany(notifications);
+                
+                // Real-time alert to teachers
+                teachers.forEach(t => {
+                    global.io?.to(`user-${t.user}`).emit("notification:new", {
+                        title: "New Submission",
+                        message: `${studentName} - ${assignment.title}`,
+                        link: `/dashboard/submissions/${submission._id}`
+                    });
+                });
+            }
+        } catch (notiError) {
+            console.error("Teacher notification failed:", notiError);
+        }
 
         return res.status(201).json({
             message: isLate
@@ -305,7 +342,12 @@ const mySubmissions = async (req, res) => {
             status: { $ne: "deleted" }
         }
 
-        let submissions = await Submission.find(query)
+        // Apply filters directly in the DB query for performance
+        if (assignmentId) {
+            query.assignment = assignmentId;
+        }
+
+        let submissionsQuery = Submission.find(query)
             .populate({
                 path: "assignment",
                 select: "title dueDate isActive isPublished course",
@@ -315,10 +357,15 @@ const mySubmissions = async (req, res) => {
                     populate: { path: "department", select: "name code isActive" }
                 }
             })
-            .sort({ createdAt: -1 })
+            .sort({ createdAt: -1 });
 
+        let submissions = await submissionsQuery;
+
+        // If filtering by courseId, we still need to filter in memory unless we use aggregation
+        // because course is a field inside the assignment model (nested ref).
+        // However, we can at least filter by assignmentId in the DB.
         if (courseId) {
-            submissions = submissions.filter((s) => s.assignment?.course._id === courseId)
+            submissions = submissions.filter((s) => s.assignment?.course?._id?.toString() === courseId)
         }
 
         return res.status(200).json({
@@ -428,10 +475,8 @@ const updateSubmission = async (req, res) => {
 
         if (!submission) return res.status(404).json({ message: "Submission not found" });
 
-        const assignment = submission.assignment;
-        const course = assignment.course;
         const department = course.department;
-        s
+        
         if (!department.isActive) return res.status(403).json({ message: "Department is not active" });
         if (!course.isPublished) return res.status(403).json({ message: "Course is not published" });
         if (!assignment.isActive) return res.status(403).json({ message: "Assignment is deleted" });
@@ -545,9 +590,16 @@ const getSubmissionStatusForAssignment = async (req, res) => {
             role: "student"
         }).populate("user", "fullName username email")
 
+        // Create a Map for O(1) lookup performance
+        const submissionMap = new Map();
+        submissions.forEach(sub => {
+            if (sub.student?._id) {
+                submissionMap.set(sub.student._id.toString(), sub);
+            }
+        });
+
         const result = enrolledStudent.map((enrolled) => {
-            const sub = submissions.find(
-                (s) => s.student._id.toString() === enrolled.user._id.toString())
+            const sub = submissionMap.get(enrolled.user._id.toString());
 
             return {
                 student: enrolled.user,
