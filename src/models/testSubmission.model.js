@@ -38,6 +38,10 @@ const testSubmissionSchema = new mongoose.Schema(
         submittedAt: {
             type: Date,
             default: Date.now
+        },
+        feedback: {
+            type: String,
+            trim: true
         }
     },
     { timestamps: true }

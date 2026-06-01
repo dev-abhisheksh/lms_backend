@@ -28,7 +28,7 @@ export const getTestById = async (req, res) => {
 export const submitTest = async (req, res) => {
     try {
         const { testId } = req.params;
-        const { answers } = req.body; // Array of { questionId, selectedOption }
+        const { answers } = req.body; // Array of { questionId, selectedOption, textAnswer }
 
         const test = await Test.findById(testId);
         if (!test) return res.status(404).json({ message: "Test not found" });
@@ -38,6 +38,8 @@ export const submitTest = async (req, res) => {
         if (existing) return res.status(400).json({ message: "Test already submitted" });
 
         let score = 0;
+        let requiresManualGrading = false;
+
         const evaluatedAnswers = test.questions.map(q => {
             const studentAns = answers.find(a => a.questionId === q._id.toString());
             let isCorrect = false;
@@ -50,12 +52,22 @@ export const submitTest = async (req, res) => {
                     marksObtained = q.marks;
                     score += q.marks;
                 }
+            } else if (q.type === "obt" && studentAns) {
+                // Case-insensitive exact match for objective questions
+                const correctOption = q.options.find(o => o.isCorrect);
+                if (correctOption && studentAns.textAnswer?.trim().toLowerCase() === correctOption.text.trim().toLowerCase()) {
+                    isCorrect = true;
+                    marksObtained = q.marks;
+                    score += q.marks;
+                }
+            } else if (q.type === "essay") {
+                requiresManualGrading = true;
             }
-            // Add other types (obt, essay) logic if needed. Essay requires teacher grading.
 
             return {
                 questionId: q._id,
                 selectedOption: studentAns?.selectedOption,
+                textAnswer: studentAns?.textAnswer,
                 isCorrect,
                 marksObtained
             };
@@ -67,13 +79,78 @@ export const submitTest = async (req, res) => {
             answers: evaluatedAnswers,
             score,
             totalMarks: test.totalMarks,
-            status: test.type === "essay" || test.type === "mixed" ? "submitted" : "graded"
+            status: requiresManualGrading ? "submitted" : "graded"
         });
 
         return res.status(201).json({ message: "Test submitted successfully", submission });
     } catch (error) {
         console.error("Submit Test Error:", error);
         return res.status(500).json({ message: "Failed to submit test" });
+    }
+};
+
+export const getTestSubmissions = async (req, res) => {
+    try {
+        const { testId } = req.params;
+        const test = await Test.findById(testId);
+        if (!test) return res.status(404).json({ message: "Test not found" });
+
+        // Authorization
+        if (req.user.role === "teacher") {
+            const enrollment = await CourseEnrollment.findOne({ user: req.user._id, course: test.course, role: "teacher" });
+            if (!enrollment) return res.status(403).json({ message: "Access denied" });
+        } else if (req.user.role !== "admin") {
+            return res.status(403).json({ message: "Access denied" });
+        }
+
+        const submissions = await TestSubmission.find({ test: testId })
+            .populate("student", "fullName email")
+            .sort({ createdAt: -1 });
+
+        return res.status(200).json({ submissions });
+    } catch (error) {
+        console.error("Get Test Submissions Error:", error);
+        return res.status(500).json({ message: "Failed to fetch submissions" });
+    }
+};
+
+export const gradeTestSubmission = async (req, res) => {
+    try {
+        const { submissionId } = req.params;
+        const { gradedAnswers, feedback } = req.body; // Array of { questionId, marksObtained, isCorrect }
+
+        const submission = await TestSubmission.findById(submissionId).populate("test");
+        if (!submission) return res.status(404).json({ message: "Submission not found" });
+
+        // Authorization
+        if (req.user.role === "teacher") {
+            const enrollment = await CourseEnrollment.findOne({ user: req.user._id, course: submission.test.course, role: "teacher" });
+            if (!enrollment) return res.status(403).json({ message: "Access denied" });
+        } else if (req.user.role !== "admin") {
+            return res.status(403).json({ message: "Access denied" });
+        }
+
+        // Update answers with manual grades
+        let newScore = 0;
+        submission.answers = submission.answers.map(ans => {
+            const gradeInfo = gradedAnswers.find(g => g.questionId === ans.questionId.toString());
+            if (gradeInfo) {
+                ans.marksObtained = gradeInfo.marksObtained;
+                ans.isCorrect = gradeInfo.isCorrect;
+            }
+            newScore += ans.marksObtained || 0;
+            return ans;
+        });
+
+        submission.score = newScore;
+        submission.status = "graded";
+        submission.feedback = feedback; // Note: Need to add feedback to model if not exists
+        await submission.save();
+
+        return res.status(200).json({ message: "Submission graded successfully", submission });
+    } catch (error) {
+        console.error("Grade Submission Error:", error);
+        return res.status(500).json({ message: "Failed to grade submission" });
     }
 };
 
@@ -94,10 +171,12 @@ export const createTest = async (req, res) => {
         const { courseId } = req.params;
         const { title, description, type, duration, totalQuestions, totalMarks, passingMarks, isPublished, questions } = req.body;
 
-        if (!courseId || !title?.trim() || !type || !duration || !totalMarks || !passingMarks) {
-            return res.status(400).json({ message: "Missing required fields" });
+        if (!courseId || !title?.trim() || !type || !duration || !questions || !questions.length) {
+            return res.status(400).json({ message: "Missing required fields or questions" });
         }
 
+        const calculatedTotalMarks = questions.reduce((acc, q) => acc + (Number(q.marks) || 0), 0);
+        
         const course = await Course.findById(courseId);
         if (!course) return res.status(404).json({ message: "Course not found" });
 
@@ -113,14 +192,14 @@ export const createTest = async (req, res) => {
             description: description?.trim() || "",
             type,
             duration: Number(duration),
-            totalQuestions: Number(totalQuestions) || questions?.length || 0,
-            totalMarks: Number(totalMarks),
+            totalQuestions: questions.length,
+            totalMarks: calculatedTotalMarks || Number(totalMarks),
             passingMarks: Number(passingMarks),
             isPublished: Boolean(isPublished),
             publishedAt: isPublished ? new Date() : null,
             course: courseId,
             createdBy: req.user._id,
-            questions: questions || []
+            questions: questions
         });
 
         // await client.del(`tests:${courseId}`);
@@ -188,6 +267,11 @@ export const updateTest = async (req, res) => {
             }
         } else if (req.user.role !== "admin") {
             return res.status(403).json({ message: "Access denied" });
+        }
+
+        if (updates.questions) {
+            updates.totalQuestions = updates.questions.length;
+            updates.totalMarks = updates.questions.reduce((acc, q) => acc + (Number(q.marks) || 0), 0);
         }
 
         const updatedTest = await Test.findByIdAndUpdate(testId, { $set: updates }, { new: true });

@@ -7,7 +7,9 @@ import {
     togglePublishTest,
     getTestById,
     submitTest,
-    getMyTestSubmissions
+    getMyTestSubmissions,
+    getTestSubmissions,
+    gradeTestSubmission
 } from "../controllers/test.controller.js";
 import authorizeRoles from "../middlewares/role.middleware.js";
 import verifyJWT from "../middlewares/auth.midleware.js";
@@ -22,6 +24,12 @@ router.post("/course/:courseId", authorizeRoles("admin", "teacher"), createTest)
 
 // Get my test submissions (Student) - PLACE THIS BEFORE /:testId
 router.get("/my-submissions", authorizeRoles("student"), getMyTestSubmissions);
+
+// Get all submissions for a test (Teacher or Admin)
+router.get("/:testId/submissions", authorizeRoles("admin", "teacher"), getTestSubmissions);
+
+// Grade a test submission (Teacher or Admin)
+router.post("/submission/:submissionId/grade", authorizeRoles("admin", "teacher"), gradeTestSubmission);
 
 // Get tests for a course (Admin, Teacher, Student)
 router.get("/course/:courseId", authorizeRoles("admin", "teacher", "student"), getTestsByCourse);
