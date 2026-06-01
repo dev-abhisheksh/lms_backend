@@ -82,6 +82,17 @@ export const submitTest = async (req, res) => {
             status: requiresManualGrading ? "submitted" : "graded"
         });
 
+        const populatedSubmisison = await TestSubmission.findById(submission._id)
+            .populate("student", "fullName email")
+
+        if (global.io) {
+            global.io?.to(`course-${test.course}`).emit("submission:received", {
+                testId: testId,
+                submission: populatedSubmisison,
+                message: `new submission from ${populatedSubmisison.student.fullName}`
+            })
+        }
+
         return res.status(201).json({ message: "Test submitted successfully", submission });
     } catch (error) {
         console.error("Submit Test Error:", error);
@@ -176,7 +187,7 @@ export const createTest = async (req, res) => {
         }
 
         const calculatedTotalMarks = questions.reduce((acc, q) => acc + (Number(q.marks) || 0), 0);
-        
+
         const course = await Course.findById(courseId);
         if (!course) return res.status(404).json({ message: "Course not found" });
 
