@@ -84,6 +84,9 @@ const createSubmission = async (req, res) => {
             status
         })
 
+        const populatedSubmission = await Submission.findById(submission._id)
+            .populate("student", "fullName email username");
+
         // ✅ Notify the teacher(s) about the new submission
         try {
             const teachers = await CourseEnrollment.find({
@@ -93,26 +96,35 @@ const createSubmission = async (req, res) => {
 
             const studentName = req.user.fullName || studentEnrollment.user.fullName;
             
-            const notifications = teachers.map(t => ({
-                recipient: t.user,
-                sender: req.user._id,
-                type: "submission",
-                title: "New Submission",
-                message: `${studentName} submitted "${assignment.title}"`,
-                link: `/dashboard/submissions/${submission._id}`,
-                metadata: { submissionId: submission._id, assignmentId: assignment._id }
-            }));
+            // Real-time alert to teachers (personal notification)
+            if (teachers.length > 0) {
+                const notifications = teachers.map(t => ({
+                    recipient: t.user,
+                    sender: req.user._id,
+                    type: "submission",
+                    title: "New Submission",
+                    message: `${studentName} submitted "${assignment.title}"`,
+                    link: `/dashboard/submissions/${submission._id}`,
+                    metadata: { submissionId: submission._id, assignmentId: assignment._id }
+                }));
 
-            if (notifications.length > 0) {
                 await Notification.insertMany(notifications);
                 
-                // Real-time alert to teachers
                 teachers.forEach(t => {
                     global.io?.to(`user-${t.user}`).emit("notification:new", {
                         title: "New Submission",
                         message: `${studentName} - ${assignment.title}`,
                         link: `/dashboard/submissions/${submission._id}`
                     });
+                });
+            }
+
+            // Real-time update to the submission list for teachers viewing the course/assignment
+            if (global.io) {
+                global.io.to(`course-${course._id}`).emit("submission:received", {
+                    assignmentId: assignmentId,
+                    submission: populatedSubmission,
+                    message: `New submission from ${studentName}`
                 });
             }
         } catch (notiError) {
