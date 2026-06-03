@@ -150,18 +150,89 @@ const logoutUser = async (req, res) => {
 
 const getCurrentUser = async (req, res) => {
     try {
-        const user = await User.findById(req.user?._id).select("fullName email role username")
+        const user = await User.findById(req.user?._id)
+            .select("-password -refreshToken")
+            .populate("department", "name code");
+
         if (!user) return res.status(404).json({
             message: "User not found",
         })
 
+        // Fetch counts for stats
+        const { CourseEnrollment } = await import("../models/courseEnrollment.model.js");
+        const { Submission } = await import("../models/submissions.model.js");
+        
+        const courseCount = await CourseEnrollment.countDocuments({ user: user._id });
+        const submissionCount = await Submission.countDocuments({ student: user._id });
+
         return res.status(200).json({
             message: "User details fetched",
-            user
+            user: {
+                ...user.toObject(),
+                stats: {
+                    courses: courseCount,
+                    submissions: submissionCount
+                }
+            }
         })
     } catch (error) {
-        console.error("Failed to fetch user details".error)
+        console.error("Failed to fetch user details", error)
         return res.status(500).json({ message: "Failed to fetch user details" })
+    }
+}
+
+const updateProfile = async (req, res) => {
+    try {
+        const { fullName, username, email } = req.body;
+        const user = await User.findById(req.user?._id);
+
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        if (fullName) user.fullName = fullName.trim();
+        if (username) {
+            const existing = await User.findOne({ username: username.trim().toLowerCase(), _id: { $ne: user._id } });
+            if (existing) return res.status(409).json({ message: "Username already taken" });
+            user.username = username.trim().toLowerCase();
+        }
+        if (email) {
+            const existing = await User.findOne({ email: email.trim().toLowerCase(), _id: { $ne: user._id } });
+            if (existing) return res.status(409).json({ message: "Email already taken" });
+            user.email = email.trim().toLowerCase();
+        }
+
+        await user.save();
+        
+        const safeUser = user.toObject();
+        delete safeUser.password;
+        delete safeUser.refreshToken;
+
+        return res.status(200).json({ message: "Profile updated successfully", user: safeUser });
+    } catch (error) {
+        console.error("Failed to update profile", error);
+        return res.status(500).json({ message: "Failed to update profile" });
+    }
+}
+
+const changePassword = async (req, res) => {
+    try {
+        const { oldPassword, newPassword } = req.body;
+        if (!oldPassword || !newPassword) {
+            return res.status(400).json({ message: "Old and new passwords are required" });
+        }
+
+        const user = await User.findById(req.user?._id);
+        if (!user) return res.status(404).json({ message: "User not found" });
+
+        const isMatch = await bcrypt.compare(oldPassword, user.password);
+        if (!isMatch) return res.status(401).json({ message: "Incorrect old password" });
+
+        user.password = await bcrypt.hash(newPassword, 10);
+        await user.save();
+
+        return res.status(200).json({ message: "Password changed successfully" });
+    } catch (error) {
+        console.error("Failed to change password", error);
+        return res.status(500).json({ message: "Failed to change password" });
     }
 }
 
@@ -457,5 +528,7 @@ export {
     getBatches,
     updateBatchYear,
     updateUserRole,
-    getUserById
+    getUserById,
+    updateProfile,
+    changePassword
 }
