@@ -4,6 +4,11 @@ import { Course } from "../models/course.model.js";
 
 const markAttendance = async (req, res) => {
     try {
+        // Controller Level RBAC
+        if (req.user.role !== "teacher" && req.user.role !== "admin") {
+            return res.status(403).json({ message: "Only teachers and admins can mark attendance" });
+        }
+
         const { courseId, date, records } = req.body;
 
         if (!courseId || !date || !records) {
@@ -14,25 +19,28 @@ const markAttendance = async (req, res) => {
         const normalizedDate = new Date(date);
         normalizedDate.setHours(0, 0, 0, 0);
 
-        // Check if teacher is enrolled in this course
-        const isTeacher = await CourseEnrollment.findOne({
-            user: req.user._id,
-            course: courseId,
-            role: "teacher"
-        });
+        // Check if teacher is enrolled in this course (Extra safety layer)
+        if (req.user.role === "teacher") {
+            const isTeacher = await CourseEnrollment.findOne({
+                user: req.user._id,
+                course: courseId,
+                role: "teacher"
+            });
 
-        if (!isTeacher && req.user.role !== "admin") {
-            return res.status(403).json({ message: "You are not authorized to mark attendance for this course" });
+            if (!isTeacher) {
+                return res.status(403).json({ message: "You are not assigned to teach this course" });
+            }
         }
 
         // Find existing attendance for this day or create new
+        // Fixed Mongoose deprecation warning: using returnDocument: 'after' instead of new: true
         const attendance = await Attendance.findOneAndUpdate(
             { course: courseId, date: normalizedDate },
             {
                 markedBy: req.user._id,
                 records: records
             },
-            { upsert: true, new: true, runValidators: true }
+            { upsert: true, returnDocument: 'after', runValidators: true }
         );
 
         return res.status(200).json({
@@ -47,6 +55,11 @@ const markAttendance = async (req, res) => {
 
 const getAttendanceByDate = async (req, res) => {
     try {
+        // Controller Level RBAC
+        if (req.user.role !== "teacher" && req.user.role !== "admin") {
+            return res.status(403).json({ message: "Access denied. Only teachers and admins can view daily attendance" });
+        }
+
         const { courseId } = req.params;
         const { date } = req.query;
 
@@ -78,6 +91,11 @@ const getAttendanceByDate = async (req, res) => {
 
 const getCourseAttendanceReport = async (req, res) => {
     try {
+        // Controller Level RBAC
+        if (req.user.role !== "teacher" && req.user.role !== "admin") {
+            return res.status(403).json({ message: "Access denied. Only teachers and admins can view reports" });
+        }
+
         const { courseId } = req.params;
 
         const attendanceRecords = await Attendance.find({ course: courseId });
