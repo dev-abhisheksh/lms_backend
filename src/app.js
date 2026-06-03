@@ -12,6 +12,7 @@ import lessonRouter from "./routes/lesson.route.js"
 import testRouter from "./routes/test.route.js"
 import noteRouter from "./routes/note.route.js"
 import aiRouter from "./routes/ai.route.js"
+import attendanceRouter from "./routes/attendance.route.js"
 
 dotenv.config();
 const app = express();
@@ -46,5 +47,6 @@ app.use("/api/v1/lessons", lessonRouter)
 app.use("/api/v1/tests", testRouter)
 app.use("/api/v1/notes", noteRouter)
 app.use("/api/v1/ai", aiRouter)
+app.use("/api/v1/attendance", attendanceRouter)
 
 export default app;
