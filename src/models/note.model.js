@@ -16,10 +16,30 @@ const noteSchema = new mongoose.Schema(
             required: true,
             trim: true,
         },
+        type: {
+            type: String,
+            enum: ["note", "resource", "link"],
+            default: "note",
+        },
         content: {
             type: String,
             trim: true,
             default: "",
+        },
+        lessonName: {
+            type: String,
+            trim: true,
+        },
+        chapter: {
+            type: String,
+            trim: true,
+        },
+        youtubeUrl: {
+            type: String,
+            trim: true,
+        },
+        semester: {
+            type: Number,
         },
         attachments: [attachmentSchema],
         isPublished: {

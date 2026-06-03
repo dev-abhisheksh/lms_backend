@@ -5,8 +5,13 @@ import { uploadToCloudinary } from "../utils/cloudinary.js";
 
 export const createNote = async (req, res) => {
     try {
+        // Controller Level RBAC
+        if (req.user.role !== "teacher" && req.user.role !== "admin") {
+            return res.status(403).json({ message: "Only teachers and admins can create materials" });
+        }
+
         const { courseId } = req.params;
-        const { title, content, isPublished } = req.body;
+        const { title, content, isPublished, type, lessonName, chapter, youtubeUrl, semester } = req.body;
 
         if (!courseId || !title?.trim()) {
             return res.status(400).json({ message: "courseId and title are required" });
@@ -17,9 +22,7 @@ export const createNote = async (req, res) => {
 
         if (req.user.role === "teacher") {
             const enrollment = await CourseEnrollment.findOne({ user: req.user._id, course: courseId, role: "teacher" });
-            if (!enrollment) return res.status(403).json({ message: "Not assigned to teach this course" });
-        } else if (req.user.role !== "admin") {
-            return res.status(403).json({ message: "Access denied" });
+            if (!enrollment) return res.status(403).json({ message: "You are not assigned to teach this course" });
         }
 
         let attachments = [];
@@ -41,18 +44,23 @@ export const createNote = async (req, res) => {
 
         const note = await Note.create({
             title: title.trim(),
+            type: type || "note",
             content: content?.trim() || "",
+            lessonName: lessonName?.trim(),
+            chapter: chapter?.trim(),
+            youtubeUrl: youtubeUrl?.trim(),
+            semester: semester ? Number(semester) : undefined,
             attachments,
             isPublished: Boolean(isPublished === "true" || isPublished === true),
-            publishedAt: isPublished ? new Date() : null,
+            publishedAt: (isPublished === "true" || isPublished === true) ? new Date() : null,
             course: courseId,
             createdBy: req.user._id,
         });
 
-        return res.status(201).json({ message: "Note created successfully", note });
+        return res.status(201).json({ message: "Material created successfully", note });
     } catch (error) {
-        console.error("Create Note Error:", error);
-        return res.status(500).json({ message: "Failed to create note" });
+        console.error("Create Material Error:", error);
+        return res.status(500).json({ message: "Failed to create material" });
     }
 };
 
@@ -71,6 +79,8 @@ export const getNotesByCourse = async (req, res) => {
             const enrollment = await CourseEnrollment.findOne({ user: req.user._id, course: courseId, role: "student" });
             if (!enrollment) return res.status(403).json({ message: "Not enrolled in this course" });
             query.isPublished = true;
+        } else if (req.user.role !== "admin") {
+            return res.status(403).json({ message: "Access denied" });
         }
 
         const notes = await Note.find(query)
@@ -79,31 +89,43 @@ export const getNotesByCourse = async (req, res) => {
 
         return res.status(200).json({ notes });
     } catch (error) {
-        console.error("Get Notes Error:", error);
-        return res.status(500).json({ message: "Failed to fetch notes" });
+        console.error("Get Materials Error:", error);
+        return res.status(500).json({ message: "Failed to fetch materials" });
     }
 };
 
 export const updateNote = async (req, res) => {
     try {
         const { noteId } = req.params;
-        const { title, content, isPublished } = req.body;
+        const { title, content, isPublished, type, lessonName, chapter, youtubeUrl, semester } = req.body;
 
         const note = await Note.findById(noteId);
-        if (!note) return res.status(404).json({ message: "Note not found" });
+        if (!note) return res.status(404).json({ message: "Material not found" });
 
-        if (req.user.role === "teacher") {
-            const enrollment = await CourseEnrollment.findOne({ user: req.user._id, course: note.course, role: "teacher" });
-            if (!enrollment) return res.status(403).json({ message: "Access denied" });
-        } else if (req.user.role !== "admin") {
-            return res.status(403).json({ message: "Access denied" });
+        // Controller Level RBAC
+        if (req.user.role !== "admin") {
+            if (req.user.role === "teacher") {
+                const enrollment = await CourseEnrollment.findOne({ user: req.user._id, course: note.course, role: "teacher" });
+                if (!enrollment) return res.status(403).json({ message: "Access denied. You are not assigned to this course" });
+            } else {
+                return res.status(403).json({ message: "Only teachers and admins can update materials" });
+            }
         }
 
         if (title) note.title = title.trim();
+        if (type) note.type = type;
         if (content !== undefined) note.content = content.trim();
+        if (lessonName !== undefined) note.lessonName = lessonName.trim();
+        if (chapter !== undefined) note.chapter = chapter.trim();
+        if (youtubeUrl !== undefined) note.youtubeUrl = youtubeUrl.trim();
+        if (semester !== undefined) note.semester = semester ? Number(semester) : undefined;
+        
         if (isPublished !== undefined) {
-            note.isPublished = Boolean(isPublished === "true" || isPublished === true);
-            if (note.isPublished && !note.publishedAt) note.publishedAt = new Date();
+            const newPublishStatus = Boolean(isPublished === "true" || isPublished === true);
+            if (newPublishStatus && !note.isPublished) {
+                note.publishedAt = new Date();
+            }
+            note.isPublished = newPublishStatus;
         }
 
         // Handle new file uploads
@@ -126,10 +148,10 @@ export const updateNote = async (req, res) => {
 
         await note.save();
 
-        return res.status(200).json({ message: "Note updated", note });
+        return res.status(200).json({ message: "Material updated successfully", note });
     } catch (error) {
-        console.error("Update Note Error:", error);
-        return res.status(500).json({ message: "Failed to update note" });
+        console.error("Update Material Error:", error);
+        return res.status(500).json({ message: "Failed to update material" });
     }
 };
 
@@ -137,23 +159,26 @@ export const deleteNote = async (req, res) => {
     try {
         const { noteId } = req.params;
         const note = await Note.findById(noteId);
-        if (!note) return res.status(404).json({ message: "Note not found" });
+        if (!note) return res.status(404).json({ message: "Material not found" });
 
-        if (req.user.role === "teacher") {
-            const enrollment = await CourseEnrollment.findOne({ user: req.user._id, course: note.course, role: "teacher" });
-            if (!enrollment) return res.status(403).json({ message: "Access denied" });
-        } else if (req.user.role !== "admin") {
-            return res.status(403).json({ message: "Access denied" });
+        // Controller Level RBAC
+        if (req.user.role !== "admin") {
+            if (req.user.role === "teacher") {
+                const enrollment = await CourseEnrollment.findOne({ user: req.user._id, course: note.course, role: "teacher" });
+                if (!enrollment) return res.status(403).json({ message: "Access denied" });
+            } else {
+                return res.status(403).json({ message: "Access denied" });
+            }
         }
 
         note.isActive = false;
         note.isPublished = false;
         await note.save();
 
-        return res.status(200).json({ message: "Note deleted successfully" });
+        return res.status(200).json({ message: "Material deleted successfully" });
     } catch (error) {
-        console.error("Delete Note Error:", error);
-        return res.status(500).json({ message: "Failed to delete note" });
+        console.error("Delete Material Error:", error);
+        return res.status(500).json({ message: "Failed to delete material" });
     }
 };
 
@@ -161,22 +186,25 @@ export const togglePublishNote = async (req, res) => {
     try {
         const { noteId } = req.params;
         const note = await Note.findById(noteId);
-        if (!note) return res.status(404).json({ message: "Note not found" });
+        if (!note) return res.status(404).json({ message: "Material not found" });
 
-        if (req.user.role === "teacher") {
-            const enrollment = await CourseEnrollment.findOne({ user: req.user._id, course: note.course, role: "teacher" });
-            if (!enrollment) return res.status(403).json({ message: "Access denied" });
-        } else if (req.user.role !== "admin") {
-            return res.status(403).json({ message: "Access denied" });
+        // Controller Level RBAC
+        if (req.user.role !== "admin") {
+            if (req.user.role === "teacher") {
+                const enrollment = await CourseEnrollment.findOne({ user: req.user._id, course: note.course, role: "teacher" });
+                if (!enrollment) return res.status(403).json({ message: "Access denied" });
+            } else {
+                return res.status(403).json({ message: "Access denied" });
+            }
         }
 
         note.isPublished = !note.isPublished;
         if (note.isPublished) note.publishedAt = new Date();
         await note.save();
 
-        return res.status(200).json({ message: "Note publish status updated", note });
+        return res.status(200).json({ message: "Material publish status updated", note });
     } catch (error) {
-        console.error("Toggle Publish Note Error:", error);
-        return res.status(500).json({ message: "Failed to toggle note publish" });
+        console.error("Toggle Publish Material Error:", error);
+        return res.status(500).json({ message: "Failed to toggle material publish" });
     }
 };
