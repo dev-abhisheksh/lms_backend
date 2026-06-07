@@ -87,6 +87,18 @@ const createAnnouncement = async (req, res) => {
 const getCourseAnnouncements = async (req, res) => {
     try {
         const { courseId } = req.params;
+
+        // Verify enrollment if user is a student
+        if (req.user.role === "student") {
+            const enrollment = await CourseEnrollment.findOne({
+                user: req.user._id,
+                course: courseId
+            });
+            if (!enrollment) {
+                return res.status(403).json({ message: "You are not enrolled in this course" });
+            }
+        }
+
         const announcements = await Announcement.find({ course: courseId })
             .populate("author", "firstName lastName profilePicture")
             .sort({ isPinned: -1, createdAt: -1 });
