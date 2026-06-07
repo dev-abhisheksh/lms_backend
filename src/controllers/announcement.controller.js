@@ -50,7 +50,7 @@ const createAnnouncement = async (req, res) => {
                 type: "announcement",
                 title: `New Announcement: ${title}`,
                 message: content.substring(0, 100) + (content.length > 100 ? "..." : ""),
-                link: `/course/${courseId}/announcements`,
+                link: `/course/${courseId}?tab=announcements`,
                 metadata: { announcementId: announcement._id, courseId }
             }));
 
