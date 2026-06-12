@@ -62,21 +62,54 @@ const getDepartmentOverviewStats = asyncHandler(async (req, res) => {
         },
         {
             $lookup: {
-                from: "users",
-                let: { deptId: "$_id" },
-                pipeline: [
-                    { $match: { $expr: { $eq: ["$department", "$$deptId"] }, isActive: true } },
-                    { $group: { _id: "$role", count: { $sum: 1 } } }
-                ],
-                as: "userStats"
-            }
-        },
-        {
-            $lookup: {
                 from: "courses",
                 localField: "_id",
                 foreignField: "department",
                 as: "courses"
+            }
+        },
+        // Count students directly linked to this department
+        {
+            $lookup: {
+                from: "users",
+                let: { deptId: "$_id" },
+                pipeline: [
+                    { 
+                        $match: { 
+                            $expr: { 
+                                $and: [
+                                    { $eq: ["$department", "$$deptId"] }, 
+                                    { $eq: ["$role", "student"] }
+                                ] 
+                            }, 
+                            isActive: true 
+                        } 
+                    },
+                    { $count: "count" }
+                ],
+                as: "studentStats"
+            }
+        },
+        // Count unique teachers enrolled in any course of this department
+        {
+            $lookup: {
+                from: "courseenrollments",
+                let: { courseIds: "$courses._id" },
+                pipeline: [
+                    { 
+                        $match: { 
+                            $expr: { 
+                                $and: [
+                                    { $in: ["$course", "$$courseIds"] },
+                                    { $eq: ["$role", "teacher"] }
+                                ]
+                            } 
+                        } 
+                    },
+                    { $group: { _id: "$user" } },
+                    { $count: "count" }
+                ],
+                as: "teacherStats"
             }
         },
         {
@@ -108,24 +141,8 @@ const getDepartmentOverviewStats = asyncHandler(async (req, res) => {
                 isActive: 1,
                 totalCourses: { $size: "$courses" },
                 activeAssignments: { $ifNull: [{ $arrayElemAt: ["$assignmentStats.count", 0] }, 0] },
-                totalStudents: {
-                    $ifNull: [
-                        { $arrayElemAt: [{ $map: { 
-                            input: { $filter: { input: "$userStats", as: "u", cond: { $eq: ["$$u._id", "student"] } } },
-                            as: "s", in: "$$s.count"
-                        } }, 0] }, 
-                        0
-                    ]
-                },
-                totalTeachers: {
-                    $ifNull: [
-                        { $arrayElemAt: [{ $map: { 
-                            input: { $filter: { input: "$userStats", as: "u", cond: { $eq: ["$$u._id", "teacher"] } } },
-                            as: "t", in: "$$t.count"
-                        } }, 0] }, 
-                        0
-                    ]
-                }
+                totalStudents: { $ifNull: [{ $arrayElemAt: ["$studentStats.count", 0] }, 0] },
+                totalTeachers: { $ifNull: [{ $arrayElemAt: ["$teacherStats.count", 0] }, 0] }
             }
         }
     ]);
