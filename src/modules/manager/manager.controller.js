@@ -16,11 +16,17 @@ const getMyDepartment = asyncHandler(async (req, res) => {
         throw new ApiError(403, "Access denied. Managers only")
     }
 
-    if (!user.department) {
+    let departmentId = user.department;
+    if (!departmentId) {
+        const userFromDb = await User.findById(user._id).select("department");
+        departmentId = userFromDb?.department;
+    }
+
+    if (!departmentId) {
         throw new ApiError(403, "Manager is not assigned to any department")
     }
 
-    const department = await Department.findById(user.department)
+    const department = await Department.findById(departmentId)
     if (!department) throw new ApiError(404, "Department not found")
 
     return res.status(200).json({
@@ -35,10 +41,15 @@ const getMyDepartment = asyncHandler(async (req, res) => {
  * @route   GET /api/v1/manager/stats/overview
  */
 const getDepartmentOverviewStats = asyncHandler(async (req, res) => {
-    const deptId = req.user.department;
+    let deptId = req.user.department;
 
     if (req.user.role !== "manager") {
         throw new ApiError(403, "Access denied. Managers only");
+    }
+
+    if (!deptId) {
+        const userFromDb = await User.findById(req.user._id).select("department");
+        deptId = userFromDb?.department;
     }
 
     if (!deptId) {
@@ -135,10 +146,15 @@ const getDepartmentOverviewStats = asyncHandler(async (req, res) => {
  * @route   GET /api/v1/manager/activity
  */
 const getDepartmentActivity = asyncHandler(async (req, res) => {
-    const deptId = req.user.department;
+    let deptId = req.user.department;
 
     if (req.user.role !== "manager") {
         throw new ApiError(403, "Access denied. Managers only");
+    }
+
+    if (!deptId) {
+        const userFromDb = await User.findById(req.user._id).select("department");
+        deptId = userFromDb?.department;
     }
 
     if (!deptId) {

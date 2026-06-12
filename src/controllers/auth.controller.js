@@ -11,7 +11,8 @@ const generateAccessToken = (user) => {
             email: user.email,
             username: user.username,
             fullName: user.fullName,
-            role: user.role
+            role: user.role,
+            department: user.department
         },
         process.env.ACCESS_TOKEN_SECRET,
         console.log(
