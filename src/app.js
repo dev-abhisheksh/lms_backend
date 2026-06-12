@@ -15,6 +15,7 @@ import aiRouter from "./routes/ai.route.js"
 import attendanceRouter from "./routes/attendance.route.js"
 import announcementRouter from "./routes/announcement.route.js"
 import notificationRouter from "./routes/notification.route.js"
+import managerRouter from "./modules/manager/manager.route.js"
 import errorMiddleware from "./middlewares/errorMiddleware.js";
 
 dotenv.config();
@@ -53,6 +54,7 @@ app.use("/api/v1/ai", aiRouter)
 app.use("/api/v1/attendance", attendanceRouter)
 app.use("/api/v1/announcements", announcementRouter)
 app.use("/api/v1/notifications", notificationRouter)
+app.use("/api/v1/manager", managerRouter)
 
 app.use(errorMiddleware)
 
