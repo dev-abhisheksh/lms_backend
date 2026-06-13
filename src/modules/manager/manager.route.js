@@ -1,10 +1,11 @@
 import express from "express";
 import verifyJWT from "../../middlewares/auth.midleware.js";
 import authorizeRoles from "../../middlewares/role.middleware.js";
-import { 
-    getMyDepartment, 
-    getDepartmentOverviewStats, 
-    getDepartmentActivity 
+import {
+    getMyDepartment,
+    getDepartmentOverviewStats,
+    getDepartmentActivity,
+    getDepartmentTeachers
 } from "./manager.controller.js";
 
 const router = express.Router();
@@ -16,5 +17,6 @@ router.use(authorizeRoles("manager"));
 router.get("/department", getMyDepartment);
 router.get("/stats/overview", getDepartmentOverviewStats);
 router.get("/activity", getDepartmentActivity);
+router.get("/teachers", getDepartmentTeachers);
 
 export default router;

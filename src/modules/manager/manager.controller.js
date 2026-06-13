@@ -3,6 +3,7 @@ import asyncHandler from "../../middlewares/asyncHandler.middleware.js";
 import { Department } from "../../models/department.model.js";
 import { User } from "../../models/user.model.js";
 import { Course } from "../../models/course.model.js";
+import { CourseEnrollment } from "../../models/courseEnrollment.model.js";
 import ApiError from "../../utils/apiError.js";
 
 /**
@@ -314,28 +315,84 @@ const getDepartmentActivity = asyncHandler(async (req, res) => {
 
 
 const getDepartmentTeachers = asyncHandler(async (req, res) => {
-    if (req.user.role !== "manager") throw new ApiError(403, "Access denied. Managers only")
+    let deptId = req.user.department;
 
-    const deptId = req.user.department
-    if (!deptId) throw new ApiError(404, "Assigned Department not found")
+    if (req.user.role !== "manager") {
+        throw new ApiError(403, "Access denied. Managers only");
+    }
+
+    if (!deptId) {
+        const userFromDb = await User.findById(req.user._id).select("department");
+        deptId = userFromDb?.department;
+    }
+
+    if (!deptId) {
+        throw new ApiError(403, "Manager is not assigned to any department");
+    }
 
     const teachers = await Course.aggregate([
-        { $match: { department: deptId } },
-        { $group: { _id: "$instructor", courseCount: { $sum: 1 }, courseNames: { $push: "$title" } } },
-        { $lookup: { from: "users", localField: "_id", foreignField: "_id", as: "info" } },
+        { 
+            $match: { department: new mongoose.Types.ObjectId(deptId) } 
+        },
+        {
+            $lookup: {
+                from: "courseenrollments",
+                let: { courseId: "$_id" },
+                pipeline: [
+                    {
+                        $match: {
+                            $expr: {
+                                $and: [
+                                    { $eq: ["$course", "$$courseId"] },
+                                    { $eq: ["$role", "teacher"] }
+                                ]
+                            }
+                        }
+                    }
+                ],
+                as: "enrollments"
+            }
+        },
+        { $unwind: "$enrollments" },
+        {
+            $group: {
+                _id: "$enrollments.user",
+                courseCount: { $sum: 1 },
+                assignedCourses: { $push: "$title" }
+            }
+        },
+        {
+            $lookup: {
+                from: "users",
+                localField: "_id",
+                foreignField: "_id",
+                as: "info"
+            }
+        },
         { $unwind: "$info" },
-        { $project: { name: "$info.name", email: "$info.email", courseCount: 1, courseNames: 1 } }
-    ])
+        {
+            $project: {
+                _id: 1,
+                fullName: "$info.fullName",
+                email: "$info.email",
+                username: "$info.username",
+                courseCount: 1,
+                assignedCourses: 1
+            }
+        }
+    ]);
 
     return res.status(200).json({
         success: true,
-        message: "Fetched all teacher details",
-        teachers
-    })
-})
+        count: teachers.length,
+        message: "Fetched all teacher details for the department",
+        data: teachers
+    });
+});
 
 export {
     getMyDepartment,
     getDepartmentOverviewStats,
-    getDepartmentActivity
+    getDepartmentActivity,
+    getDepartmentTeachers
 }
