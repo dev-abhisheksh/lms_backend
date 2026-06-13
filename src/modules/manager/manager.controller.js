@@ -57,8 +57,8 @@ const getDepartmentOverviewStats = asyncHandler(async (req, res) => {
     }
 
     const stats = await Department.aggregate([
-        { 
-            $match: { _id: new mongoose.Types.ObjectId(deptId) } 
+        {
+            $match: { _id: new mongoose.Types.ObjectId(deptId) }
         },
         {
             $lookup: {
@@ -74,16 +74,16 @@ const getDepartmentOverviewStats = asyncHandler(async (req, res) => {
                 from: "users",
                 let: { deptId: "$_id" },
                 pipeline: [
-                    { 
-                        $match: { 
-                            $expr: { 
+                    {
+                        $match: {
+                            $expr: {
                                 $and: [
-                                    { $eq: ["$department", "$$deptId"] }, 
+                                    { $eq: ["$department", "$$deptId"] },
                                     { $eq: ["$role", "student"] }
-                                ] 
-                            }, 
-                            isActive: true 
-                        } 
+                                ]
+                            },
+                            isActive: true
+                        }
                     },
                     { $count: "count" }
                 ],
@@ -96,15 +96,15 @@ const getDepartmentOverviewStats = asyncHandler(async (req, res) => {
                 from: "courseenrollments",
                 let: { courseIds: "$courses._id" },
                 pipeline: [
-                    { 
-                        $match: { 
-                            $expr: { 
+                    {
+                        $match: {
+                            $expr: {
                                 $and: [
                                     { $in: ["$course", "$$courseIds"] },
                                     { $eq: ["$role", "teacher"] }
                                 ]
-                            } 
-                        } 
+                            }
+                        }
                     },
                     { $group: { _id: "$user" } },
                     { $count: "count" }
@@ -311,6 +311,28 @@ const getDepartmentActivity = asyncHandler(async (req, res) => {
         data: activityFeed
     });
 });
+
+
+const getDepartmentTeachers = asyncHandler(async (req, res) => {
+    if (req.user.role !== "manager") throw new ApiError(403, "Access denied. Managers only")
+
+    const deptId = req.user.department
+    if (!deptId) throw new ApiError(404, "Assigned Department not found")
+
+    const teachers = await Course.aggregate([
+        { $match: { department: deptId } },
+        { $group: { _id: "$instructor", courseCount: { $sum: 1 }, courseNames: { $push: "$title" } } },
+        { $lookup: { from: "users", localField: "_id", foreignField: "_id", as: "info" } },
+        { $unwind: "$info" },
+        { $project: { name: "$info.name", email: "$info.email", courseCount: 1, courseNames: 1 } }
+    ])
+
+    return res.status(200).json({
+        success: true,
+        message: "Fetched all teacher details",
+        teachers
+    })
+})
 
 export {
     getMyDepartment,
