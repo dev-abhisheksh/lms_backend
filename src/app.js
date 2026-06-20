@@ -17,10 +17,12 @@ import announcementRouter from "./routes/announcement.route.js"
 import notificationRouter from "./routes/notification.route.js"
 import managerRouter from "./modules/manager/manager.route.js"
 import errorMiddleware from "./middlewares/errorMiddleware.js";
+import cookieParser from "cookie-parser"
 
 dotenv.config();
 const app = express();
 app.use(express.json());
+app.use(cookieParser())
 
 const allowedOrigins = [
     "http://localhost:5173",

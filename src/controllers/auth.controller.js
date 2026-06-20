@@ -15,11 +15,6 @@ const generateAccessToken = (user) => {
             department: user.department
         },
         process.env.ACCESS_TOKEN_SECRET,
-        console.log(
-            "ACCESS_TOKEN_SECRET (verify):",
-            process.env.ACCESS_TOKEN_SECRET
-        ),
-
         { expiresIn: process.env.ACCESS_TOKEN_EXPIRY || "1h" }
     )
 }
@@ -130,7 +125,11 @@ const loginUser = async (req, res) => {
         const noPassUser = user.toObject();
         delete noPassUser.password;
 
-        return res.status(200).json({ message: "User loggedIn successfully", user: noPassUser, accessToken, refreshToken })
+        return res
+            .cookie("accessToken", accessToken, { httpOnly: true, secure: true, sameSite: "strict" })
+            .cookie("refreshToken", refreshToken, { httpOnly: true, secure: true, sameSite: "strict" })
+            .status(200)
+            .json({ message: "User logged in successfully", user: noPassUser });
     } catch (error) {
         console.error("Failed to login user", error.message);
         return res.status(500).json({ message: "Failed to login user" })
@@ -162,7 +161,7 @@ const getCurrentUser = async (req, res) => {
         // Fetch counts for stats
         const { CourseEnrollment } = await import("../models/courseEnrollment.model.js");
         const { Submission } = await import("../models/submissions.model.js");
-        
+
         const courseCount = await CourseEnrollment.countDocuments({ user: user._id });
         const submissionCount = await Submission.countDocuments({ student: user._id });
 
@@ -202,7 +201,7 @@ const updateProfile = async (req, res) => {
         }
 
         await user.save();
-        
+
         const safeUser = user.toObject();
         delete safeUser.password;
         delete safeUser.refreshToken;
@@ -247,7 +246,7 @@ const getAllUsers = async (req, res) => {
         const { search, role, department, year, page = 1, limit = 20 } = req.query;
 
         const query = {};
-        
+
         if (role) {
             query.role = role;
         }
@@ -270,7 +269,7 @@ const getAllUsers = async (req, res) => {
         }
 
         const skip = (Math.max(1, Number(page)) - 1) * Math.min(100, Number(limit));
-        
+
         const users = await User.find(query)
             .select("_id fullName username email role department year isActive createdAt")
             .populate("department", "name code")

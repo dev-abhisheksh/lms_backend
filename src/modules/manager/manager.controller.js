@@ -313,7 +313,10 @@ const getDepartmentActivity = asyncHandler(async (req, res) => {
     });
 });
 
-
+/**
+ * @des     get a list of all the teachers assined to the managers department
+ * @route   GET /api/v1/manager/teachers
+ */
 const getDepartmentTeachers = asyncHandler(async (req, res) => {
     let deptId = req.user.department;
 
