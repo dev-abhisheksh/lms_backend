@@ -2,6 +2,8 @@ import mongoose from "mongoose";
 import bcrypt from "bcryptjs"
 import jwt from "jsonwebtoken"
 import { User } from "../models/user.model.js";
+import asyncHandler from "../middlewares/asyncHandler.middleware.js";
+import ApiError from "../utils/apiError.js";
 
 //Access Token
 const generateAccessToken = (user) => {
@@ -126,8 +128,8 @@ const loginUser = async (req, res) => {
         delete noPassUser.password;
 
         return res
-            .cookie("accessToken", accessToken, { httpOnly: true, secure: true, sameSite: "strict" })
-            .cookie("refreshToken", refreshToken, { httpOnly: true, secure: true, sameSite: "strict" })
+            .cookie("accessToken", accessToken, { httpOnly: true, secure: true, sameSite: "strict", maxAge: 7 * 60 * 1000 })
+            .cookie("refreshToken", refreshToken, { httpOnly: true, secure: true, sameSite: "strict", maxAge: 7 * 24 * 60 * 60 * 1000 })
             .status(200)
             .json({ message: "User logged in successfully", user: noPassUser });
     } catch (error) {
@@ -135,6 +137,35 @@ const loginUser = async (req, res) => {
         return res.status(500).json({ message: "Failed to login user" })
     }
 }
+
+const refreshTokenRotation = asyncHandler(async (req, res) => {
+    const token = req.cookies?.refreshToken;
+    if (!token) throw new ApiError(401, "Refresh token not found");
+
+    let decoded;
+    try {
+        decoded = jwt.verify(token, process.env.REFRESH_TOKEN_SECRET);
+    } catch (error) {
+        throw new ApiError(401, error.name === "TokenExpiredError" ? "Refresh token expired" : "Invalid refresh token");
+    }
+
+    const user = await User.findById(decoded._id).select("-password");
+    if (!user) throw new ApiError(401, "User not found");
+
+    if (user.refreshToken !== token) throw new ApiError(401, "Refresh token reused or invalid");
+
+    const accessToken = generateAccessToken(user);
+    const newRefreshToken = generateRefreshToken(user);
+
+    user.refreshToken = newRefreshToken;
+    await user.save({ validateBeforeSave: false });
+
+    return res
+        .cookie("accessToken", accessToken, { httpOnly: true, secure: true, sameSite: "strict", maxAge: 15 * 60 * 1000 })
+        .cookie("refreshToken", newRefreshToken, { httpOnly: true, secure: true, sameSite: "strict", maxAge: 7 * 24 * 60 * 60 * 1000 })
+        .status(200)
+        .json(new ApiResponse(200, {}, "Token refreshed successfully"));
+});
 
 const logoutUser = async (req, res) => {
     if (!req.user) {
